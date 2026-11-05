@@ -433,6 +433,8 @@ FodyWeavers.xsd
 /.vs/
 # editor.ini, imgui.ini 등 실행 중 저장되는 사용자 설정
 /Saved/
+imgui.ini
+editor.ini
 *.sln
 *.slnx
 *.vcxproj

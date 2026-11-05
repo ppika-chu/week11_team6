@@ -10,7 +10,7 @@ local function FindVcpkg()
 
 	local VsWhere = os.getenv("ProgramFiles(x86)") .. "/Microsoft Visual Studio/Installer/vswhere.exe"
 	if os.isfile(VsWhere) then
-		local VsPath = os.outputof(Shell('"' .. VsWhere .. '" -latest -property installationPath'))
+		local VsPath = os.outputof(Shell('"' .. VsWhere .. '" -latest -prerelease -property installationPath'))
 		if VsPath and os.isfile(VsPath .. "/VC/vcpkg/vcpkg.exe") then
 			return VsPath .. "/VC/vcpkg/vcpkg.exe"
 		end
