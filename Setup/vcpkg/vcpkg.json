@@ -1,0 +1,6 @@
+{
+  "dependencies": [
+    "luajit",
+    "sol2"
+  ]
+}

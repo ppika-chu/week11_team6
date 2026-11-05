@@ -1,0 +1,40 @@
+#pragma once
+
+enum class ERasterizerState : uint8
+{
+	SolidBack,
+	SolidNone,
+	SolidFront,
+	Wireframe,
+	ShadowDepth,
+	ShadowDepthFrontCull,
+	DirectionalShadowDepth,
+	DirectionalShadowDepthFrontCull,
+	DecalDepthBias,
+	Count
+};
+enum class EDepthStencilState : uint8
+{
+	Default,
+	ReadOnly,
+	Disabled,
+	StencilMask,
+	StencilOutline,
+	AlwaysWrite,
+	Count
+};
+enum class EBlendState : uint8
+{
+	Opaque,
+	AlphaBlend,
+	Additive,
+	NoColorWrite,
+	Count
+};
+enum class ESamplerState : uint8
+{
+	LinearClamp,
+	LinearWrap,
+	ShadowPCF,
+	Count
+};
