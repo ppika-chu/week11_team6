@@ -1,4 +1,4 @@
-﻿#include "EnginePCH.h"
+#include "EnginePCH.h"
 #include "StatOverlay.h"
 
 #include "EngineStatics.h"
@@ -82,7 +82,7 @@ bool FStatOverlay::ExecCommand(const FString& CommandLine, FString& OutMessage)
 
 	if (Tokens.Num() < 2)
 	{
-		OutMessage = "Usage: stat <fps|memory|profile|shadow|all|none>";
+		OutMessage = "Usage: stat <fps|memory|profile|shadow|decal|skin|all|none>";
 		return true;
 	}
 
@@ -123,9 +123,13 @@ bool FStatOverlay::ExecCommand(const FString& CommandLine, FString& OutMessage)
 	{
 		Target = EStatFlags::Decal;
 	}
+	else if (EqualsIgnoreCase(Arg, "skin"))
+	{
+		Target = EStatFlags::Skin;
+	}
 	if (Target == EStatFlags::None)
 	{
-		OutMessage = std::format("stat: unknown stat '{}'. Available: fps, memory, profile, shadow, decal, all, none", Arg);
+		OutMessage = std::format("stat: unknown stat '{}'. Available: fps, memory, profile, shadow, decal, skin, all, none", Arg);
 		return true;
 	}
 

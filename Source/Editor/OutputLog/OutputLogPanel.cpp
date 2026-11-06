@@ -251,7 +251,7 @@ void FOutputLogPanel::ExecCommand(const FString& CommandLine)
 		{
 			FLog::Log(ELogVerbosity::Info, "- {}", Command);
 		}
-		OnLog(ELogVerbosity::Info, "- STAT <fps|memory|profile|shadow|all|none>");
+		OnLog(ELogVerbosity::Info, "- STAT <fps|memory|profile|shadow|decal|skin|all|none>");
 		OnLog(ELogVerbosity::Info, "- CSM [ON|OFF|SET <0-4>]");
 		OnLog(ELogVerbosity::Info, "- SHADOW_CACHE [0|1] (no argument: toggle)");
 		OnLog(ELogVerbosity::Info, "- ShadowResolution <128|256|512|1024|2048|4096> (global maximum)");

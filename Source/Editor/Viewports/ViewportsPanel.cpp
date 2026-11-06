@@ -1,4 +1,4 @@
-﻿#include "EnginePCH.h"
+#include "EnginePCH.h"
 #include "Editor/Viewports/ViewportsPanel.h"
 
 #include "Core/StatOverlay.h"
@@ -14,6 +14,7 @@
 #include "Core/Stats/EditorStats.h"
 #include "Core/Stats/ShadowStats.h"
 #include "Core/Stats/DecalStats.h"
+#include "Core/Stats/SkinningStats.h"
 #include "Render/ShadowSettings.h"
 
 namespace
@@ -731,6 +732,15 @@ void FViewportsPanel::DrawStatOverlay(ImDrawList* DrawList, const ImVec2& ViewMi
 						static_cast<double>(DepthBytes) / BytesPerMegabyte, ParameterBytes,
 						static_cast<double>(DepthBytes + ParameterBytes) / BytesPerMegabyte),
 			ValueColor });
+	}
+
+	if (FStatOverlay::IsEnabled(EStatFlags::Skin))
+	{
+		Lines.Add({ "Skinning", TitleColor });
+
+		Lines.Add({ std::format("  Skinning CPU: {:.3f} ms", FStatRegistry::GetCurrentFrameMs(SkinningStats::STAT_CPU)), ValueColor });
+		Lines.Add({ std::format("  Skinned Vertices: {}", FStatRegistry::GetCounter(SkinningStats::STAT_SkinnedVertices)), ValueColor });
+		Lines.Add({ std::format("  Skin Upload Bytes: {}", FStatRegistry::GetCounter(SkinningStats::STAT_SkinUploadBytes)), ValueColor });
 	}
 
 	struct FProfileStatLine

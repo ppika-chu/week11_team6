@@ -1,6 +1,8 @@
 #include "EnginePCH.h"
 #include "SkinnedMeshComponent.h"
 #include "Asset/AssetManager.h"
+#include "Core/Stats/LightweightStats.h"
+#include "Core/Stats/SkinningStats.h"
 #include "Render/RenderCommand.h"
 #include "Render/SkeletalMesh.h"
 #include "Render/Material.h"
@@ -167,6 +169,9 @@ void USkinnedMeshComponent::FinalizeBoneTransform()
 		return;
 	}
 
+	SCOPE_CYCLE_COUNTER(SkinningStats::STAT_CPU);
+	FStatRegistry::AddCounter(SkinningStats::STAT_SkinnedVertices, static_cast<uint64>(SkeletalMesh->GetMeshData().Vertices.Num()));
+
 	for (int32 i = 0; i < ComponentSpaceTransforms.Num(); ++i)
 	{
 		SkinningMatrices[i] = InvBind[i] * ComponentSpaceTransforms[i];
@@ -274,6 +279,7 @@ void USkinnedMeshComponent::UpdateSkinnedVertices()
 		Out.Tangent = FVector4(T.X, T.Y, T.Z, Bind.Tangent.W);
 	}
 
+	FStatRegistry::AddCounter(SkinningStats::STAT_SkinUploadBytes, sizeof(FVertex) * VertexCount);
 	RenderCommand::UpdateBufferData(RenderMesh->VertexBuffer.get(), SkinnedVertices.GetData(),
 		sizeof(FVertex) * static_cast<uint32>(VertexCount));
 
