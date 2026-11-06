@@ -3,6 +3,7 @@
 #include "SkinnedMeshComponent.h"
 
 class UAnimInstance;
+struct FAnimPose;
 
 // 언리얼 USkeletalMeshComponent에 해당한다.
 // 부모 기준 로컬 포즈(BoneSpaceTransforms)를 가지고 포즈를 만든다. 스키닝과 렌더는 USkinnedMeshComponent가 맡는다.
@@ -40,6 +41,7 @@ protected:
 	virtual void InitPoseFromMesh() override;
 	bool InitializeAnimScriptInstance(bool bForceReinit);
 	void ClearAnimScriptInstance();
+	bool FinalizePoseEvaluationResult(const FAnimPose& InFinalPose);
 
 private:
 	bool IsValidBoneIndex(int32 BoneIndex) const { return BoneIndex >= 0 && BoneIndex < BoneSpaceTransforms.Num(); }

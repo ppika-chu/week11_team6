@@ -1,6 +1,7 @@
 #include "EnginePCH.h"
 #include "SkeletalMeshComponent.h"
 #include "Animation/AnimInstance.h"
+#include "Animation/AnimPose.h"
 #include "Asset/AssetManager.h"
 #include "Render/SkeletalMesh.h"
 
@@ -97,6 +98,10 @@ void USkeletalMeshComponent::TickComponent(float DeltaTime)
 	Super::TickComponent(DeltaTime);
 
 	TickAnimation(DeltaTime);
+	if (IsRegistered() && AnimScriptInstance && AnimScriptInstance->IsInitialized())
+	{
+		RefreshBoneTransforms();
+	}
 }
 
 void USkeletalMeshComponent::TickAnimation(float DeltaTime)
@@ -117,7 +122,8 @@ void USkeletalMeshComponent::SetBoneLocalTransform(int32 BoneIndex, const FTrans
 	}
 
 	BoneSpaceTransforms[BoneIndex] = LocalTransform;
-	RefreshBoneTransforms();
+	FillComponentSpaceTransforms(BoneSpaceTransforms);
+	FinalizeBoneTransform();
 }
 
 void USkeletalMeshComponent::SetBoneRotation(int32 BoneIndex, const FRotator& Rotation)
@@ -134,7 +140,8 @@ void USkeletalMeshComponent::SetBoneRotation(int32 BoneIndex, const FRotator& Ro
 	const FMatrix Rotate = Rotation.Quaternion().ToFMatrix();
 	BoneSpaceTransforms[BoneIndex] = Ref;
 	BoneSpaceTransforms[BoneIndex].Rotation = MatrixToRotator(Rotate * Ref.Rotation.ToFMatrix());
-	RefreshBoneTransforms();
+	FillComponentSpaceTransforms(BoneSpaceTransforms);
+	FinalizeBoneTransform();
 }
 
 void USkeletalMeshComponent::ResetToRefPose()
@@ -146,7 +153,8 @@ void USkeletalMeshComponent::ResetToRefPose()
 	}
 
 	BoneSpaceTransforms = SkeletalMesh->RefSkeleton.RefBonePose;
-	RefreshBoneTransforms();
+	FillComponentSpaceTransforms(BoneSpaceTransforms);
+	FinalizeBoneTransform();
 }
 
 void USkeletalMeshComponent::RefreshBoneTransforms()
@@ -156,8 +164,34 @@ void USkeletalMeshComponent::RefreshBoneTransforms()
 		return;
 	}
 
+	if (AnimScriptInstance && AnimScriptInstance->IsInitialized())
+	{
+		FAnimPose EvaluatedPose;
+		AnimScriptInstance->EvaluateAnimation(EvaluatedPose);
+		if (!FinalizePoseEvaluationResult(EvaluatedPose))
+		{
+			return;
+		}
+	}
+
 	FillComponentSpaceTransforms(BoneSpaceTransforms);
 	FinalizeBoneTransform();
+}
+
+bool USkeletalMeshComponent::FinalizePoseEvaluationResult(const FAnimPose& InFinalPose)
+{
+	if (!SkeletalMesh || InFinalPose.LocalTransforms.Num() != SkeletalMesh->RefSkeleton.RefBonePose.Num())
+	{
+		HTR_LOG(Error, "[Skel] Evaluated pose must contain every mesh bone");
+		return false;
+	}
+
+	BoneSpaceTransforms = InFinalPose.LocalTransforms;
+	for (FTransform& Transform : BoneSpaceTransforms)
+	{
+		Transform.Rotation = Transform.Rotation.Normalized();
+	}
+	return true;
 }
 
 void USkeletalMeshComponent::InitPoseFromMesh()
