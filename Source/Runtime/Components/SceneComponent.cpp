@@ -153,7 +153,7 @@ FRotator USceneComponent::GetWorldRotation() const
 		return (ParentQuat * LocalQuat).ToFRotator();
 	}
 
-	return Transform.Rotation;
+	return Transform.Rotation.ToFRotator();
 }
 
 FVector USceneComponent::GetWorldLocation() const

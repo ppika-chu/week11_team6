@@ -1,4 +1,6 @@
 #include "EnginePCH.h"
+#include "Serialization/TypeSerializer.h"
+#include "Serialization/MathSerialization.h"
 #include "Asset/FbxImporter/FbxImporter.h"
 #include "Asset/FbxImporter/FbxAssetBake.h"
 #include "Asset/FbxImporter/FbxAssetLoader.h"
@@ -807,6 +809,71 @@ void MaterialSerialization(UMaterial* Base)
 	}
 }
 
+void QuaternionTransforms()
+{
+	const FRotator Euler(23.0f, -47.0f, 91.0f);
+	FTransform Source(Euler.Quaternion(), FVector(2, -3, 5), FVector(2, 3, 4));
+	auto Verify = [&](const FTransform& Value)
+	{
+		const FMatrix Expected = Source.GetLocalMatrix(), Actual = Value.GetLocalMatrix();
+		for (int Row = 0; Row < 4; ++Row)
+			for (int Col = 0; Col < 4; ++Col)
+				Check(Near(Expected.M[Row][Col], Actual.M[Row][Col]), "Quaternion Transform matrix preserved");
+	};
+	const FMatrix Rotation = Euler.Quaternion().ToFMatrix();
+	const FMatrix Matrix = Source.GetLocalMatrix();
+	Check(Near(Matrix.M[0][1], Rotation.M[0][1] * 2) && Near(Matrix.M[3][2], 5), "Scale and translation preserved");
+	Check(Near(Source.GetForward().X, Euler.Quaternion().GetForwardVector().X), "Direction uses stored quaternion");
+	Check(Near(FTransform::Identity.Rotation.W, 1), "Identity quaternion");
+	json Json = Source;
+	Check(Json["Rotation"].size() == 4, "JSON writes quaternion components");
+	Verify(Json.get<FTransform>());
+	TArray<uint8> Bytes;
+	{
+		FMemoryWriter Writer(Bytes); FJsonArchiveOutputFormatter Formatter(Writer); FStructuredArchive Archive(Formatter);
+		Archive.Open() << Source;
+	}
+	auto Document = json::parse(FString(reinterpret_cast<const char*>(Bytes.GetData()), Bytes.Num()));
+	Check(Document["Rotation"].contains("W"), "Structured JSON writes quaternion");
+	{
+		const auto Text = Document.dump(); TArray<uint8> Input;
+		for (char C : Text) Input.Add(static_cast<uint8>(C));
+		FMemoryReader Reader(Input); FJsonArchiveInputFormatter Formatter(Reader); FStructuredArchive Archive(Formatter);
+		FTransform Target; Archive.Open() << Target; Verify(Target);
+		Check(!Reader.IsError(), "Structured Transform read");
+	}
+	Bytes.Reset();
+	{
+		FMemoryWriter Writer(Bytes); FBinaryArchiveFormatter Formatter(Writer); FStructuredArchive Archive(Formatter);
+		Archive.Open() << Source;
+	}
+	{
+		FMemoryReader Reader(Bytes); FBinaryArchiveFormatter Formatter(Reader); FStructuredArchive Archive(Formatter);
+		FTransform Target; Archive.Open() << Target; Verify(Target);
+		Check(!Reader.IsError() && Reader.Tell() == Bytes.Num(), "Binary quaternion layout aligned");
+	}
+}
+
+void QuaternionBakeRoundTrip()
+{
+	const FTransform Expected(FQuat(0.2f, -0.3f, 0.4f, 0.5f).Normalized(), FVector(2, -3, 5), FVector(2, 3, 4));
+	FFbxAssetData Source;
+	Source.Type = EFbxAssetType::Skeleton;
+	Source.SourcePath = "test.fbx";
+	Source.SourceObject = "Skeleton";
+	Source.RefSkeleton.RefBoneInfo.Add(FMeshBoneInfo{ "Root", -1 });
+	Source.RefSkeleton.RefBonePose.Add(Expected);
+	const auto Path = Root / "quaternion.fbxbin";
+	FString Error;
+	Check(FFbxAssetBake::WriteBaked(FbxPath::ToString(Path), Source, Error), Error);
+	FFbxAssetData Loaded;
+	Check(FFbxAssetBake::ReadBaked(FbxPath::ToString(Path), Loaded, Error), Error);
+	const FMatrix A = Expected.GetLocalMatrix(), B = Loaded.RefSkeleton.RefBonePose[0].GetLocalMatrix();
+	for (int Row = 0; Row < 4; ++Row)
+		for (int Col = 0; Col < 4; ++Col)
+			Check(Near(A.M[Row][Col], B.M[Row][Col]), "Quaternion bake preserves transform");
+}
+
 void BinaryAndPublish()
 {
 	FString Error; auto Data = Cook(FbxPath::ToString(Root / "skeletal.fbx"));
@@ -913,6 +980,7 @@ int main()
 	{
 		Check(!fs::exists(Root), "Test fixture directory already exists; remove it after reviewing its contents");
 		fs::create_directories(Root / "extracted");
+		QuaternionTransforms(); QuaternionBakeRoundTrip(); std::cout << "PASS quaternion transforms and serialization\n";
 		StaticOptions(); std::cout << "PASS static options\n";
 		SkeletalOptions(); std::cout << "PASS skeletal options\n";
 		LODs(); std::cout << "PASS LOD grouping\n";

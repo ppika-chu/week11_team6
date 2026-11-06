@@ -35,7 +35,7 @@ public:
 	}
 
 
-	const FRotator& GetRelativeRotation() const { return Transform.Rotation; }
+	FRotator GetRelativeRotation() const { return Transform.Rotation.ToFRotator(); }
 	void SetRelativeRotation(const FRotator& InRotation)
 	{
 		Transform.Rotation = InRotation;

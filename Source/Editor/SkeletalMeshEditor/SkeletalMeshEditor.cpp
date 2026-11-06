@@ -1269,9 +1269,9 @@ void FSkeletalMeshEditor::DrawBoneTransform()
 	}
 
 	// 레벨 Details와 같은 X / Y / Z(Roll / Pitch / Yaw) 순서
-	const FRotator Rotation = bLocalRotation ? Local.Rotation : GetBoneRotation(BoneIndex);
+	const FRotator Rotation = bLocalRotation ? Local.Rotation.ToFRotator() : GetBoneRotation(BoneIndex);
 	float RotationValues[3] = { Rotation.Roll, Rotation.Pitch, Rotation.Yaw };
-	switch (DrawTransformRow("Rotation", &bLocalRotation, RotationValues, 0.1f, !IsSameRotation(Local.Rotation, Reference.Rotation), Icons))
+	switch (DrawTransformRow("Rotation", &bLocalRotation, RotationValues, 0.1f, !IsSameRotation(Local.Rotation.ToFRotator(), Reference.Rotation.ToFRotator()), Icons))
 	{
 	case ETransformRowResult::Changed:
 	{
@@ -1335,7 +1335,8 @@ void FSkeletalMeshEditor::DrawReferenceTransform()
 	ImGui::BeginDisabled();
 	FVector Location = Reference.Location;
 	DrawTransformRow("Location", nullptr, Location.V, 0.0f, false, {});
-	float RotationValues[3] = { Reference.Rotation.Roll, Reference.Rotation.Pitch, Reference.Rotation.Yaw };
+	const FRotator ReferenceRotation = Reference.Rotation.ToFRotator();
+	float RotationValues[3] = { ReferenceRotation.Roll, ReferenceRotation.Pitch, ReferenceRotation.Yaw };
 	DrawTransformRow("Rotation", nullptr, RotationValues, 0.0f, false, {});
 	FVector Scale = Reference.Scale;
 	DrawTransformRow("Scale", nullptr, Scale.V, 0.0f, false, {});
