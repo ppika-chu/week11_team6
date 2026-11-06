@@ -17,6 +17,7 @@ public:
 
 	UAnimSequencePlayer* GetSequencePlayer() const { return SequencePlayer; }
 	void SetSequencePlayer(UAnimSequencePlayer* InSequencePlayer) { SequencePlayer = InSequencePlayer; }
+	// Todo : 애니메이션 시퀀스 플레이어 관련 멤버 함수 추가
 
 private:
 	UAnimSequencePlayer* SequencePlayer = nullptr;
