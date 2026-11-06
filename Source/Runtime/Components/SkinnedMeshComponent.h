@@ -3,6 +3,8 @@
 #include "MeshComponent.h"
 // PROPERTY(SkeletalMesh) 리플렉션이 UObject 파생 여부를 검사하므로 전방 선언이 아닌 완전한 정의가 필요하다
 #include "Render/SkeletalMesh.h"
+#include "Engine/SkeletalMeshSceneProxy.h"
+#include "Render/SkinningSettings.h"
 
 // 언리얼 USkinnedMeshComponent에 해당한다.
 // 본 행렬(컴포넌트 기준)을 받아 스키닝하고 그리는 일만 맡는다. 포즈를 어떻게 만드는지는 모른다.
@@ -30,6 +32,8 @@ public:
 	virtual int32 GetNumMaterials() const override;
 	virtual FString GetMaterialSlotName(int32 SlotIndex) const override;
 	virtual UMaterial* GetDefaultMaterial(int32 SlotIndex) const override;
+
+	virtual FPrimitiveSceneProxy* CreateSceneProxy() override { return new FSkeletalMeshSceneProxy(this); }
 
 	int32 GetBoneCount() const { return ComponentSpaceTransforms.Num(); }
 	int32 FindBoneIndex(const FString& BoneName) const;
@@ -72,4 +76,5 @@ private:
 	USkeletalMesh* PoseSourceMesh = nullptr;
 	UStaticMesh* RenderMesh = nullptr;
 	TArray<FVertex> SkinnedVertices;
+	bool bVertexBufferIsBindPose = false;
 };

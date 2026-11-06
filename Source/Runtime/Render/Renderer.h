@@ -25,6 +25,12 @@ enum class ELightCullingMode : uint32
 	Tiled25D
 };
 
+enum class EVertexInputType : uint8
+{
+	Static,
+	GPUSkin,
+};
+
 struct FPerObjectConstants
 {
 	FMatrix World;
@@ -423,6 +429,8 @@ private:
 	uint32 NumLocalLightsThisFrame = 0;
 
 	EViewMode CurrentViewMode = EViewMode::Lit;
+
+	EVertexInputType CurrentVertexInputType = EVertexInputType::Static;
 
 	// UUID별 기존 타일을 조회하거나 새로 배정해 작업에 연결한다.
 	void PrepareShadowDepthTargets(TArray<FProjectedShadowInfo>& ShadowInfos);

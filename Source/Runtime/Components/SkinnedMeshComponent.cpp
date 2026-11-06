@@ -7,6 +7,8 @@
 #include "Render/SkeletalMesh.h"
 #include "Render/Material.h"
 #include "Engine/PrimitiveSceneProxy.h"
+#include "Render/GPUSkinning.h"
+#include "Render/SkinningSettings.h"
 
 USkinnedMeshComponent::USkinnedMeshComponent()
 {
@@ -177,7 +179,25 @@ void USkinnedMeshComponent::FinalizeBoneTransform()
 		SkinningMatrices[i] = InvBind[i] * ComponentSpaceTransforms[i];
 	}
 
-	UpdateSkinnedVertices();
+	if (FSkinningSettings::GetSkinningMode() == ESkinningMode::CPU)
+	{
+		UpdateSkinnedVertices();
+		bVertexBufferIsBindPose = false;
+	}
+	else
+	{
+		if (!bVertexBufferIsBindPose && RenderMesh)
+		{
+			const auto& Bind = SkeletalMesh->GetMeshData().Vertices;
+			RenderCommand::UpdateBufferData(RenderMesh->VertexBuffer.get(), Bind.GetData(), sizeof(FVertex) * Bind.Num());
+			bVertexBufferIsBindPose = true;
+		}
+
+		if (FPrimitiveSceneProxy* Proxy = GetSceneProxy())
+		{
+			Proxy->MarkShadowDirty();
+		}
+	}
 }
 
 void USkinnedMeshComponent::CreateRenderMesh()
@@ -219,6 +239,8 @@ void USkinnedMeshComponent::CreateRenderMesh()
 	Mesh->RebuildRenderData();
 	RenderMesh = Mesh;
 	SkinnedVertices = Source.Vertices;
+
+	bVertexBufferIsBindPose = false;
 }
 
 void USkinnedMeshComponent::DestroyRenderMesh()
@@ -292,34 +314,10 @@ void USkinnedMeshComponent::UpdateSkinnedVertices()
 
 void USkinnedMeshComponent::SubmitToRenderQueue(FRenderQueue& Queue)
 {
-	const FPrimitiveSceneProxy* Proxy = GetSceneProxy();
-	if (!RenderMesh || !Proxy)
+	if (auto* Proxy = static_cast<FSkeletalMeshSceneProxy*>(GetSceneProxy()))
 	{
-		return;
-	}
-	const FMeshRenderState* State = Proxy->GetRenderState();
-	if (!State)
-	{
-		return;
-	}
-
-	if (State->LODCount == 0)
-	{
-		return;
-	}
-
-	// 스켈레탈 메시는 LOD0만 쓰므로 LOD0의 모든 섹션(머티리얼 슬롯)을 제출한다
-	const FCachedMeshLOD& LOD = State->LODs[0];
-	for (uint32 I = 0; I < LOD.NumSections; ++I)
-	{
-		const FCachedMeshSection& Section = State->Sections[LOD.FirstSection + I];
-		FRenderPacket& Packet = Queue.AddDefaulted_GetRef();
-		Packet.Proxy = Proxy;
-		Packet.Mesh = RenderMesh;
-		Packet.Material = Section.Material;
-		Packet.StartIndex = Section.StartIndex;
-		Packet.IndexCount = Section.IndexCount;
-		Packet.LODIndex = 0;
+		Proxy->PrepareDynamicData();
+		Proxy->AddMeshPackets(Queue);
 	}
 }
 

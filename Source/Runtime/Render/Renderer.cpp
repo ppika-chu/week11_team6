@@ -27,6 +27,8 @@
 #include <unordered_map>
 #include <bit>
 
+#include "GPUSkinning.h"
+
 DECLARE_CYCLE_STAT("Draw Render Packets", STAT_DrawRenderPackets);
 DECLARE_CYCLE_STAT("Render Queue Sorting", STAT_RenderQueueSorting);
 DECLARE_CYCLE_STAT("Upload Per-Object CB", STAT_UploadPerObjectCB);
@@ -961,18 +963,26 @@ void FRenderer::DrawPackets(uint32 Begin, uint32 End, const FMatrix& ViewProject
 
 	RenderCommand::BindConstantBuffer(0, ViewCB.get(), EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel);
 
-
+	const FSkinningResources* LastSkinning = nullptr;
 	for (uint32 k = Begin; k < End; ++k) // k = 정렬된 위치
 	{
 		const uint32 PacketIndex = SortEntries[k].PacketIndex;
 		const FRenderPacket& RenderPacket = RenderPackets[PacketIndex];
+		const bool bSkinned = RenderPacket.Skinning;
+		const EVertexInputType VertexInputType = bSkinned ? EVertexInputType::GPUSkin : EVertexInputType::Static;
 		if (RenderPacket.Mesh != LastMesh || RenderPacket.LODIndex != LastLODIndex)
 		{
 			RenderCommand::BindMesh(RenderPacket.Mesh, RenderPacket.LODIndex);
 		}
-		if (RenderPacket.Material != LastMaterial)
+		if (RenderPacket.Material != LastMaterial || CurrentVertexInputType != VertexInputType)
 		{
+			CurrentVertexInputType = VertexInputType;
 			BindMaterial(RenderPacket.Material);
+		}
+		if (bSkinned && LastSkinning != RenderPacket.Skinning)
+		{
+			RenderCommand::BindShaderResource(GPUSkinning::BoneMatricesSlot, RenderPacket.Skinning->BoneMatrices, EShaderBindFlagBits::Vertex);
+			RenderCommand::BindShaderResource(GPUSkinning::SkinWeightsSlot, RenderPacket.Skinning->SkinWeights, EShaderBindFlagBits::Vertex);
 		}
 		if (RenderPacket.Material != LastMaterial || RenderPacket.MaterialParamData)
 		{
@@ -994,7 +1004,10 @@ void FRenderer::DrawPackets(uint32 Begin, uint32 End, const FMatrix& ViewProject
 		LastMaterial = RenderPacket.Material;
 		LastMesh = RenderPacket.Mesh;
 		LastLODIndex = RenderPacket.LODIndex;
+		LastSkinning = RenderPacket.Skinning;
 	}
+
+	CurrentVertexInputType = EVertexInputType::Static;
 }
 
 FOcclusionMeasureResult FRenderer::MeasureOpaqueOcclusion(const FMatrix& ViewProjection)
@@ -1218,7 +1231,10 @@ void FRenderer::BindMaterial(UMaterial* Material)
 	if (FRenderResourceManager::IsUberLitProgram(Program))
 	{
 		const EViewMode MaterialMode = ResolveMaterialViewMode(CurrentViewMode, Material->ShadingModel);
-		if (FShaderProgram * Variant{ FRenderResourceManager::GetUberLitProgram(MaterialMode) })
+		FShaderProgram* Variant = CurrentVertexInputType == EVertexInputType::GPUSkin
+			? FRenderResourceManager::GetUberLitSkinnedProgram(MaterialMode)
+			: FRenderResourceManager::GetUberLitProgram(MaterialMode);
+		if (Variant)
 		{
 			Program = Variant;
 		}

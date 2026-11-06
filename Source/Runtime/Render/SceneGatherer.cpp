@@ -219,11 +219,10 @@ void FSceneGatherer::GatherRenderPackets(FScene& Scene, FRenderQueue& RenderQueu
 				for (uint32 VisibleIndex = Begin; VisibleIndex < End; ++VisibleIndex)
 				{
 					FPrimitiveSceneProxy* Proxy = VisibleProxies[VisibleIndex];   // 읽기만
-					if (!Proxy->IsVisible()){ continue;
-}
+					if (!Proxy->IsVisible()){ continue; }
 
 					UStaticMesh* Mesh = Proxy->GetMesh();
-					if (!Mesh)
+					if (!Mesh || !Proxy->SupportsStaticFastPath())
 					{
 						Out.SlowPathIndices.Add(VisibleIndex);     // 컴포넌트를 건드리는 경로는 메인이 나중에
 						continue;

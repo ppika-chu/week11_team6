@@ -64,6 +64,11 @@ void FRenderResourceManager::LoadUberLit(const fs::path& ShaderRoot)
 	static const D3D_SHADER_MACRO Lambert[] = { { "LIGHTING_MODEL_LAMBERT", "1" }, { nullptr, nullptr } };
 	static const D3D_SHADER_MACRO BlinnPhong[] = { { "LIGHTING_MODEL_BLINN_PHONG", "1" }, { nullptr, nullptr } };
 	static const D3D_SHADER_MACRO WorldNormal[] = { { "WORLD_NORMAL", "1" }, { nullptr, nullptr } };
+	static const D3D_SHADER_MACRO UnlitSkin[] = { { "LIGHTING_MODEL_UNLIT", "1" }, { "GPU_SKINNING", "1" }, { nullptr, nullptr } };
+	static const D3D_SHADER_MACRO GouraudSkin[] = { { "LIGHTING_MODEL_GOURAUD", "1" }, { "GPU_SKINNING", "1" }, { nullptr, nullptr } };
+	static const D3D_SHADER_MACRO LambertSkin[] = { { "LIGHTING_MODEL_LAMBERT", "1" }, { "GPU_SKINNING", "1" }, { nullptr, nullptr } };
+	static const D3D_SHADER_MACRO BlinnPhongSkin[] = { { "LIGHTING_MODEL_BLINN_PHONG", "1" }, { "GPU_SKINNING", "1" }, { nullptr, nullptr } };
+	static const D3D_SHADER_MACRO WorldNormalSkin[] = { { "WORLD_NORMAL", "1" }, { "GPU_SKINNING", "1" }, { nullptr, nullptr } };
 
 	LoadOrCompileShader(Path); // 기본 (Lambert)
 	LoadOrCompileShader(Path, Unlit);
@@ -71,6 +76,11 @@ void FRenderResourceManager::LoadUberLit(const fs::path& ShaderRoot)
 	LoadOrCompileShader(Path, Lambert);
 	LoadOrCompileShader(Path, BlinnPhong);
 	LoadOrCompileShader(Path, WorldNormal);
+	LoadOrCompileShader(Path, UnlitSkin);
+	LoadOrCompileShader(Path, GouraudSkin);
+	LoadOrCompileShader(Path, LambertSkin);
+	LoadOrCompileShader(Path, BlinnPhongSkin);
+	LoadOrCompileShader(Path, WorldNormalSkin);
 
 	// 뷰모드 -> 변형 테이블. 컴파일에 실패한 키는 nullptr로 남는다(GetShaderProgram의 폴백을 쓰지 않으려고 맵을 직접 찾는다).
 	auto FindProgram = [this](const FString& Key) -> FShaderProgram*
@@ -89,6 +99,14 @@ void FRenderResourceManager::LoadUberLit(const fs::path& ShaderRoot)
 	// Wireframe은 선 색만 보이면 되고, Scene Depth는 깊이만 쓰므로 둘 다 조명 없는 Unlit을 쓴다.
 	UberLitPrograms[static_cast<int32>(EViewMode::Wireframe)] = UberLitPrograms[static_cast<int32>(EViewMode::Unlit)];
 	UberLitPrograms[static_cast<int32>(EViewMode::SceneDepth)] = UberLitPrograms[static_cast<int32>(EViewMode::Unlit)];
+	UberLitSkinnedPrograms[static_cast<int32>(EViewMode::Lit_Gouraud)] = FindProgram(MakeShaderKey(Path, GouraudSkin));
+	UberLitSkinnedPrograms[static_cast<int32>(EViewMode::Lit_Lambert)] = FindProgram(MakeShaderKey(Path, LambertSkin));
+	UberLitSkinnedPrograms[static_cast<int32>(EViewMode::Lit_BlinnPhong)] = FindProgram(MakeShaderKey(Path, BlinnPhongSkin));
+	UberLitSkinnedPrograms[static_cast<int32>(EViewMode::Lit)] = UberLitSkinnedPrograms[static_cast<int32>(EViewMode::Lit_BlinnPhong)];
+	UberLitSkinnedPrograms[static_cast<int32>(EViewMode::Unlit)] = FindProgram(MakeShaderKey(Path, UnlitSkin));
+	UberLitSkinnedPrograms[static_cast<int32>(EViewMode::WorldNormal)] = FindProgram(MakeShaderKey(Path, WorldNormalSkin));
+	UberLitSkinnedPrograms[static_cast<int32>(EViewMode::Wireframe)] = UberLitSkinnedPrograms[static_cast<int32>(EViewMode::Unlit)];
+	UberLitSkinnedPrograms[static_cast<int32>(EViewMode::SceneDepth)] = UberLitSkinnedPrograms[static_cast<int32>(EViewMode::Unlit)];
 }
 
 FShaderProgram* FRenderResourceManager::GetUberLitProgram(EViewMode Mode)
@@ -99,6 +117,16 @@ FShaderProgram* FRenderResourceManager::GetUberLitProgram(EViewMode Mode)
 		return nullptr;
 	}
 	return Get().UberLitPrograms[Index];
+}
+
+FShaderProgram* FRenderResourceManager::GetUberLitSkinnedProgram(EViewMode Mode)
+{
+	const int32 Index = static_cast<int32>(Mode);
+	if (Index < 0 || Index >= static_cast<int32>(EViewMode::Count))
+	{
+		return nullptr;
+	}
+	return Get().UberLitSkinnedPrograms[Index];
 }
 
 bool FRenderResourceManager::IsUberLitProgram(const FShaderProgram* Program)

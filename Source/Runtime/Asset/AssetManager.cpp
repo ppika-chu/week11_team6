@@ -342,6 +342,7 @@ void UAssetManager::CreateDefaultMeshes()
 		FString Error;
 		if (FSkeletalMeshGenerator::BuildTestArm(*TestArm, Error))
 		{
+			TestArm->InitResources();
 			// 확인이 필요하면 주석 해제 (역바인드 행렬까지 찍힌다)
 			//FSkeletalMeshGenerator::LogSkinData(*TestArm);
 			RegisterAsset("TestArm", TestArm);

@@ -2,6 +2,7 @@
 #include "Editor/OutputLog/OutputLogPanel.h"
 #include "Editor/EditorUI/EditorUIScale.h"
 #include "Render/ShadowSettings.h"
+#include "Render/SkinningSettings.h"
 #include "Core/StatOverlay.h"
 
 static int TextEditCallbackStub(ImGuiInputTextCallbackData* data)
@@ -240,6 +241,14 @@ void FOutputLogPanel::ExecCommand(const FString& CommandLine)
 		return;
 	}
 
+	FString SkinningMessage;
+	if (FSkinningSettings::ExecCommand(CommandLine, SkinningMessage))
+	{
+		FLog::Log(ELogVerbosity::Info, "{}", SkinningMessage);
+		ScrollToBottom = true;
+		return;
+	}
+
 	if (EqualsIgnoreCase(CommandLine, "CLEAR"))
 	{
 		ClearLog();
@@ -257,6 +266,7 @@ void FOutputLogPanel::ExecCommand(const FString& CommandLine)
 		OnLog(ELogVerbosity::Info, "- ShadowResolution <128|256|512|1024|2048|4096> (global maximum)");
 		OnLog(ELogVerbosity::Info, "- r.shadow.CacheWholeSceneShadows [0|1] (alias: SHADOW_CACHE)");
 		OnLog(ELogVerbosity::Info, "- SHADOW_CULL [front|back] (no argument: toggle, alias: r.shadow.CullMode)");
+		OnLog(ELogVerbosity::Info, "- SKINNING [gpu|cpu] (no argument: toggle)");
 	}
 	else if (EqualsIgnoreCase(CommandLine, "HISTORY"))
 	{
