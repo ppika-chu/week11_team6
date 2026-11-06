@@ -96,7 +96,16 @@ void USkeletalMeshComponent::TickComponent(float DeltaTime)
 {
 	Super::TickComponent(DeltaTime);
 
-	// TODO: 애니메이션 평가 → BoneSpaceTransforms → RefreshBoneTransforms
+	TickAnimation(DeltaTime);
+}
+
+void USkeletalMeshComponent::TickAnimation(float DeltaTime)
+{
+	EnsurePoseInitialized();
+	if (IsRegistered() && SkeletalMesh && AnimScriptInstance)
+	{
+		AnimScriptInstance->UpdateAnimation(DeltaTime);
+	}
 }
 
 void USkeletalMeshComponent::SetBoneLocalTransform(int32 BoneIndex, const FTransform& LocalTransform)

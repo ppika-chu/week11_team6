@@ -20,6 +20,7 @@ public:
 	void SetAnimInstanceClass(UClass* NewClass);
 	UAnimInstance* GetAnimInstance() const { return AnimScriptInstance; }
 	void InitAnim(bool bForceReinit);
+	void TickAnimation(float DeltaTime);
 
 	// 부모 기준 자세 하나를 바꾸고 다시 누적 + 스키닝한다
 	void SetBoneLocalTransform(int32 BoneIndex, const FTransform& LocalTransform);
