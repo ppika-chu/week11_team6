@@ -1,5 +1,6 @@
 #include "EnginePCH.h"
 #include "SkeletalMeshComponent.h"
+#include "Animation/AnimInstance.h"
 #include "Asset/AssetManager.h"
 #include "Render/SkeletalMesh.h"
 
@@ -12,6 +13,83 @@ USkeletalMeshComponent::USkeletalMeshComponent()
 
 USkeletalMeshComponent::~USkeletalMeshComponent()
 {
+	ClearAnimScriptInstance();
+}
+
+void USkeletalMeshComponent::SetAnimInstanceClass(UClass* NewClass)
+{
+	if (NewClass && (!NewClass->IsChildOf(UAnimInstance::StaticClass()) || !NewClass->Constructor))
+	{
+		return;
+	}
+	if (AnimClass == NewClass)
+	{
+		return;
+	}
+
+	AnimClass = NewClass;
+	ClearAnimScriptInstance();
+	InitAnim(true);
+}
+
+void USkeletalMeshComponent::InitAnim(bool bForceReinit)
+{
+	if (IsRegistered() && SkeletalMesh)
+	{
+		InitializeAnimScriptInstance(bForceReinit);
+	}
+}
+
+bool USkeletalMeshComponent::InitializeAnimScriptInstance(bool bForceReinit)
+{
+	if (!AnimClass)
+	{
+		return false;
+	}
+	if (!AnimScriptInstance)
+	{
+		AnimScriptInstance = NewObject<UAnimInstance>(this, AnimClass);
+		bForceReinit = true;
+	}
+	if (AnimScriptInstance && (bForceReinit || !AnimScriptInstance->IsInitialized()))
+	{
+		AnimScriptInstance->InitializeAnimation();
+		return true;
+	}
+	return false;
+}
+
+void USkeletalMeshComponent::ClearAnimScriptInstance()
+{
+	// 전역 종료 정리에서는 소유 Component보다 Instance가 먼저 삭제될 수 있다.
+	if (AnimScriptInstance && FindLiveObjectByAddress(AnimScriptInstance))
+	{
+		AnimScriptInstance->UninitializeAnimation();
+		delete AnimScriptInstance;
+	}
+	AnimScriptInstance = nullptr;
+}
+
+void USkeletalMeshComponent::OnRegister()
+{
+	EnsurePoseInitialized();
+	Super::OnRegister();
+	InitAnim(true);
+}
+
+void USkeletalMeshComponent::OnUnregister()
+{
+	if (AnimScriptInstance)
+	{
+		AnimScriptInstance->UninitializeAnimation();
+	}
+	Super::OnUnregister();
+}
+
+void USkeletalMeshComponent::InitializeComponent()
+{
+	Super::InitializeComponent();
+	InitAnim(false);
 }
 
 void USkeletalMeshComponent::TickComponent(float DeltaTime)
@@ -75,6 +153,7 @@ void USkeletalMeshComponent::RefreshBoneTransforms()
 
 void USkeletalMeshComponent::InitPoseFromMesh()
 {
+	ClearAnimScriptInstance();
 	// 임포터가 저장한 기준 자세(FTransform, 부모 상대)를 시작 포즈로 준비한 뒤
 	// 부모가 배열 크기와 렌더 메시를 만들고 RefreshBoneTransforms를 부른다
 	if (SkeletalMesh)
@@ -87,4 +166,5 @@ void USkeletalMeshComponent::InitPoseFromMesh()
 	}
 
 	Super::InitPoseFromMesh();
+	InitAnim(true);
 }

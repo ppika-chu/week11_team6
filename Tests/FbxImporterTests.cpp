@@ -7,6 +7,9 @@
 #include "Asset/FbxImporter/FbxPath.h"
 #include "Asset/AssetManager.h"
 #include "Animation/Skeleton.h"
+#include "Animation/AnimInstance.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Engine/World.h"
 #include "Render/Material.h"
 #include "Render/Mesh.h"
 #include "Render/RenderCommand.h"
@@ -25,6 +28,41 @@
 
 namespace
 {
+class UTestAnimInstance : public UAnimInstance
+{
+	DECLARE_CLASS(UTestAnimInstance, UAnimInstance)
+public:
+	int32 InitializeCount = 0;
+	int32 UninitializeCount = 0;
+	bool bValidOwnerOnInitialize = false;
+	FString Events;
+	inline static int32 DestructionCount = 0;
+	~UTestAnimInstance() override { ++DestructionCount; }
+	void NativeInitializeAnimation() override
+	{
+		++InitializeCount;
+		Events += "I";
+		bValidOwnerOnInitialize = GetSkelMeshComponent() && GetSkelMeshComponent()->GetAnimInstance() == this && IsInitialized();
+	}
+	void NativeUninitializeAnimation() override
+	{
+		++UninitializeCount;
+		Events += "U";
+	}
+};
+
+class UOtherTestAnimInstance : public UTestAnimInstance
+{
+	DECLARE_CLASS(UOtherTestAnimInstance, UTestAnimInstance)
+};
+
+class UTestSkeletalMeshComponent : public USkeletalMeshComponent
+{
+	DECLARE_CLASS(UTestSkeletalMeshComponent, USkeletalMeshComponent)
+protected:
+	bool ShouldCreateRenderState() const override { return false; }
+};
+
 void Check(bool Value, const FString& Message) { if (!Value) throw std::runtime_error(Message); }
 bool Near(float A, float B) { return std::abs(A - B) < .0005f; }
 const fs::path Root = "Assets/.fbx-test-fixtures";
@@ -874,6 +912,68 @@ void QuaternionBakeRoundTrip()
 			Check(Near(A.M[Row][Col], B.M[Row][Col]), "Quaternion bake preserves transform");
 }
 
+void AnimInstanceLifecycle()
+{
+	auto* World = NewObject<UWorld>();
+	auto* Mesh = NewObject<USkeletalMesh>();
+	auto* Replacement = NewObject<USkeletalMesh>();
+	for (auto* Asset : {Mesh, Replacement})
+	{
+		Asset->RefSkeleton.RefBoneInfo.Add(FMeshBoneInfo{ "Root", -1 });
+		Asset->RefSkeleton.RefBonePose.Add(FTransform::Identity);
+		FString Error; Check(Asset->CalculateInvRefMatrices(Error), Error);
+	}
+	auto* Component = NewObject<UTestSkeletalMeshComponent>();
+	Component->SetAnimInstanceClass(UTestAnimInstance::StaticClass());
+	Component->SetSkeletalMesh(Mesh);
+	Check(!Component->GetAnimInstance(), "Unregistered component defers instance creation");
+	Component->RegisterComponentWithWorld(World);
+	auto* Instance = Cast<UTestAnimInstance>(Component->GetAnimInstance());
+	Check(Instance && Instance->bValidOwnerOnInitialize && Instance->GetOuter() == Component, "Registered component creates its own initialized instance");
+	Check(Instance->Events == "UI", "InitializeAnimation clears state before native initialization");
+	Component->InitializeComponent();
+	Component->SetAnimInstanceClass(UTestAnimInstance::StaticClass());
+	Check(Instance->InitializeCount == 1, "Same class and InitializeComponent do not initialize twice");
+	Component->InitAnim(true);
+	Check(Instance->Events == "UIUI", "Forced reinitialization preserves instance and hook order");
+	Component->UnregisterComponent();
+	Check(Component->GetAnimInstance() == Instance && !Instance->IsInitialized(), "Unregister uninitializes without deleting instance");
+	Component->RegisterComponentWithWorld(World);
+	Check(Component->GetAnimInstance() == Instance && Instance->InitializeCount == 3, "Reregister reinitializes retained instance");
+	auto* Other = NewObject<UTestSkeletalMeshComponent>();
+	Other->SetSkeletalMesh(Mesh);
+	Other->SetAnimInstanceClass(UTestAnimInstance::StaticClass());
+	Other->RegisterComponentWithWorld(World);
+	Check(Other->GetAnimInstance() != Instance && Other->GetAnimInstance()->GetSkelMeshComponent() == Other, "Shared mesh has separate instances");
+	const int32 Before = UTestAnimInstance::DestructionCount;
+	Component->SetAnimInstanceClass(UOtherTestAnimInstance::StaticClass());
+	Check(Component->GetAnimInstance()->IsA<UOtherTestAnimInstance>() && UTestAnimInstance::DestructionCount == Before + 1, "Class replacement destroys old instance");
+	Component->SetAnimInstanceClass(UObject::StaticClass());
+	Check(Component->GetAnimInstance()->IsA<UOtherTestAnimInstance>(), "Non-animation class does not replace instance");
+	Component->SetSkeletalMesh(Replacement);
+	Check(Component->GetAnimInstance()->IsInitialized() && UTestAnimInstance::DestructionCount == Before + 2, "Mesh replacement recreates instance");
+	Component->SetSkeletalMesh(nullptr);
+	Check(!Component->GetAnimInstance() && UTestAnimInstance::DestructionCount == Before + 3, "Removing mesh clears instance");
+	Component->SetSkeletalMesh(Mesh);
+	Check(Component->GetAnimInstance()->IsA<UOtherTestAnimInstance>(), "Mesh assignment restores configured class");
+	Component->SetAnimInstanceClass(nullptr);
+	Check(!Component->GetAnimInstance() && UTestAnimInstance::DestructionCount == Before + 4, "Clearing class releases instance");
+	Component->UnregisterComponent();
+	Other->UnregisterComponent();
+	delete Component;
+	delete Other;
+	Check(UTestAnimInstance::DestructionCount == Before + 5, "Component destructor releases retained instance");
+	auto* Orphan = NewObject<UTestSkeletalMeshComponent>();
+	Orphan->SetSkeletalMesh(Mesh);
+	Orphan->SetAnimInstanceClass(UTestAnimInstance::StaticClass());
+	Orphan->RegisterComponentWithWorld(World);
+	Orphan->UnregisterComponent();
+	delete Orphan->GetAnimInstance(); // 전역 종료의 자식 우선 삭제 순서 재현
+	delete Orphan;
+	Check(UTestAnimInstance::DestructionCount == Before + 6, "Global child-first cleanup does not delete instance twice");
+	delete Mesh; delete Replacement; delete World;
+}
+
 void BinaryAndPublish()
 {
 	FString Error; auto Data = Cook(FbxPath::ToString(Root / "skeletal.fbx"));
@@ -974,10 +1074,16 @@ void BinaryAndPublish()
 }
 }
 
-int main()
+int main(int Argc, char** Argv)
 {
 	try
 	{
+		AnimInstanceLifecycle();
+		std::cout << "PASS anim instance lifecycle\n";
+		if (Argc == 2 && FString(Argv[1]) == "--anim-instance")
+		{
+			return 0;
+		}
 		Check(!fs::exists(Root), "Test fixture directory already exists; remove it after reviewing its contents");
 		fs::create_directories(Root / "extracted");
 		QuaternionTransforms(); QuaternionBakeRoundTrip(); std::cout << "PASS quaternion transforms and serialization\n";

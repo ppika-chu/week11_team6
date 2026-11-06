@@ -2,9 +2,11 @@
 
 #include "SkinnedMeshComponent.h"
 
+class UAnimInstance;
+
 // 언리얼 USkeletalMeshComponent에 해당한다.
 // 부모 기준 로컬 포즈(BoneSpaceTransforms)를 가지고 포즈를 만든다. 스키닝과 렌더는 USkinnedMeshComponent가 맡는다.
-// 나중에 애니메이션(AnimInstance)과 물리 바디가 여기에 붙는다.
+// AnimInstance의 생성과 수명을 관리한다.
 class USkeletalMeshComponent : public USkinnedMeshComponent
 {
 	DECLARE_CLASS(USkeletalMeshComponent, USkinnedMeshComponent)
@@ -13,6 +15,11 @@ public:
 	virtual ~USkeletalMeshComponent() override;
 
 	virtual void TickComponent(float DeltaTime) override;
+	virtual void InitializeComponent() override;
+
+	void SetAnimInstanceClass(UClass* NewClass);
+	UAnimInstance* GetAnimInstance() const { return AnimScriptInstance; }
+	void InitAnim(bool bForceReinit);
 
 	// 부모 기준 자세 하나를 바꾸고 다시 누적 + 스키닝한다
 	void SetBoneLocalTransform(int32 BoneIndex, const FTransform& LocalTransform);
@@ -27,10 +34,16 @@ public:
 	virtual void RefreshBoneTransforms() override;
 
 protected:
+	virtual void OnRegister() override;
+	virtual void OnUnregister() override;
 	virtual void InitPoseFromMesh() override;
+	bool InitializeAnimScriptInstance(bool bForceReinit);
+	void ClearAnimScriptInstance();
 
 private:
 	bool IsValidBoneIndex(int32 BoneIndex) const { return BoneIndex >= 0 && BoneIndex < BoneSpaceTransforms.Num(); }
 
 	TArray<FTransform> BoneSpaceTransforms;
+	UClass* AnimClass = nullptr;
+	UAnimInstance* AnimScriptInstance = nullptr;
 };
