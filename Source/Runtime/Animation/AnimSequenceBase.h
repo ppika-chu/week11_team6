@@ -4,6 +4,13 @@
 
 struct FAnimPose;
 
+enum ETypeAdvanceAnim : int
+{
+	ETAA_Default,
+	ETAA_Finished,
+	ETAA_Looped
+};
+
 // TODO: UAnimDataModel 연동 예정.
 class UAnimSequenceBase : public UAnimationAsset
 {
