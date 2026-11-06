@@ -2,6 +2,7 @@
 #include "FbxImporter.h"
 #include "FbxAssetBake.h"
 #include "FbxPath.h"
+#include "Animation/BonePose.h"
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -98,6 +99,19 @@ FbxAMatrix Geometry(FbxNode* Node)
 }
 
 FVector Reflect(const FbxVector4& V) { return FVector(static_cast<float>(V[0]), static_cast<float>(-V[1]), static_cast<float>(V[2])); }
+
+// 부모 기준 FBX 행렬을 엔진 좌표계의 위치, 회전, 크기로 바꾼다.
+FPoseTransform EnginePose(const FbxAMatrix& Local, double UnitScale)
+{
+	const FbxQuaternion Q = Local.GetQ();
+	const FbxVector4 S = Local.GetS();
+
+	FPoseTransform Pose;
+	Pose.Location = Reflect(Local.GetT()) * static_cast<float>(UnitScale);
+	Pose.Rotation = FQuat(static_cast<float>(Q[0]), static_cast<float>(-Q[1]), static_cast<float>(Q[2]), static_cast<float>(-Q[3])).Normalized();
+	Pose.Scale = FVector(static_cast<float>(S[0]), static_cast<float>(S[1]), static_cast<float>(S[2]));
+	return Pose;
+}
 
 FMatrix EngineMatrix(const FbxAMatrix& M, double UnitScale, bool bEngineInput = true)
 {
@@ -537,11 +551,8 @@ bool FImport::BuildRig(FRig& Rig)
 		const FbxAMatrix Local = Parent < 0 ? Global : (FrameInverse * Bind(Rig.Bones[Parent])).Inverse() * Global;
 		const FMatrix Converted = EngineMatrix(Local, UnitScale);
 		if (!FiniteMatrix(Converted)) { Error = "Invalid bind transform: " + NodePath(Node); return false; }
-		const FbxQuaternion Q = Local.GetQ();
-		const FVector Translation = Reflect(Local.GetT()) * static_cast<float>(UnitScale);
-		const FbxVector4 S = Local.GetS();
-		FTransform Transform(FQuat(static_cast<float>(Q[0]), static_cast<float>(-Q[1]), static_cast<float>(Q[2]), static_cast<float>(-Q[3])).Normalized().ToFRotator(),
-			Translation, FVector(static_cast<float>(S[0]), static_cast<float>(S[1]), static_cast<float>(S[2])));
+		const FPoseTransform Pose = EnginePose(Local, UnitScale);
+		FTransform Transform(Pose.Rotation.ToFRotator(), Pose.Location, Pose.Scale);
 		const FMatrix Rebuilt = Transform.GetLocalMatrix();
 		bool Difference = false;
 		for (int R = 0; R < 4; ++R) for (int C = 0; C < 4; ++C)
