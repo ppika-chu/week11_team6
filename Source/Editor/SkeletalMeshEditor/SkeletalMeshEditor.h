@@ -134,7 +134,7 @@ private:
     // 원점에 둔 빈 액터 + 스켈레탈 메시 컴포넌트 (언리얼 AAnimationEditorPreviewActor). 소유는 PreviewWorld
     AActor* PreviewActor = nullptr;
     USkeletalMeshComponent* PreviewComponent = nullptr;
-    bool bShowFloor = true;
+    bool bShowFloor = false;
     bool bShowMesh = true;
 
     // 레벨 뷰포트 슬롯 / PIE 창과 같은 구성 (EditorEngine::UpdatePIEWindowTargets)
@@ -158,7 +158,7 @@ private:
     TArray<TArray<int32>> BoneChildren;         // 트리 / 자식 연결용. 생성자에서 한 번 만든다
     TArray<int32> RootBones;                    // ParentIndex가 -1인 본들
 
-    EBoneDrawMode BoneDrawMode = EBoneDrawMode::Selected;
+    EBoneDrawMode BoneDrawMode = EBoneDrawMode::All;
     int32 SelectedBoneIndex = -1;
     FGizmo BoneGizmo;                           // 레벨 에디터와 따로. 결과 적용만 다르다
     bool bGizmoUsedThisClick = false;           // 이번 클릭이 기즈모 드래그였으면 놓을 때 본 선택을 하지 않는다
