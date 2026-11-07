@@ -4,6 +4,7 @@
 #include "FbxImporter.h"
 #include "FbxPath.h"
 #include "Asset/AssetManager.h"
+#include "Animation/AnimSequence.h"
 #include "Animation/Skeleton.h"
 #include "Render/Material.h"
 #include "Render/Mesh.h"
@@ -69,6 +70,23 @@ public:
 		{
 			auto* Skeleton = Allocate<USkeleton>();
 			Skeleton->RefSkeleton = Asset.RefSkeleton; Object = Skeleton;
+		}
+		else if (Asset.Type == EFbxAssetType::AnimSequence)
+		{
+			auto* Skeleton = Cast<USkeleton>(Resolve(Asset.SkeletonKey));
+			if (!Skeleton) { if (Error.empty()) Error = "Invalid FBX skeleton reference"; return nullptr; }
+			for (const auto& Track : Asset.Animation.Tracks)
+			{
+				if (Track.BoneTreeIndex >= Skeleton->RefSkeleton.GetNum() || Skeleton->RefSkeleton.RefBoneInfo[Track.BoneTreeIndex].Name != Track.Name)
+				{ Error = "Animation track does not match skeleton: " + Track.Name; return nullptr; }
+			}
+			auto* Sequence = Allocate<UAnimSequence>(); Object = Sequence;
+			Sequence->SetSkeleton(Skeleton);
+			Sequence->DataModel = NewObject<UAnimDataModel>();
+			Sequence->DataModel->BoneAnimationTracks = Asset.Animation.Tracks;
+			Sequence->DataModel->FrameRate = Asset.Animation.FrameRate;
+			Sequence->DataModel->NumberOfFrames = Asset.Animation.NumberOfFrames;
+			Sequence->DataModel->NumberOfKeys = Asset.Animation.NumberOfKeys;
 		}
 		else if (Asset.Type == EFbxAssetType::Material)
 		{

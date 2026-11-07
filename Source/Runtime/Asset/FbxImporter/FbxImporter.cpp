@@ -10,7 +10,6 @@
 #include <functional>
 #include <iomanip>
 #include <map>
-#include <numeric>
 #include <regex>
 #include <set>
 #include <sstream>
@@ -260,6 +259,8 @@ struct FRig
 	FReferenceSkeleton Reference;
 	FbxAMatrix ParentBind;
 	FString Key;
+	bool bUseTimeZeroAsBindPose = false;
+	TArray<FMatrix> TimeZeroRebindMatrices; // 바인드 포즈의 정점을 0초 자세로 옮기는 본별 행렬
 };
 
 struct FOutputGroup
@@ -287,112 +288,26 @@ struct FCornerHash
 	}
 };
 
-constexpr int32 DEFAULT_SAMPLERATE = 30;
-constexpr float MaxReferenceRate = 1920.0f;
+constexpr double DEFAULT_SAMPLERATE = 30.0;
+constexpr double MINIMUM_ANIMATION_LENGTH = 1.0 / DEFAULT_SAMPLERATE;
 
-// 키 간격 하나를 정확히 지나는 가장 작은 초당 키 수를 구한다. (UE GetTimeSampleRate)
-int32 GetTimeSampleRate(float DeltaTime)
+// 옵션과 FBX 파일 프레임레이트로 초당 키 수를 정한다. (UE UInterchangeGenericAnimationPipeline)
+double GetBoneAnimationSampleRate(const FFbxImportOptions& Options, double FrameRate)
 {
-	const auto Fractional = [](float Value) { return Value - std::trunc(Value); };
-	const float OriginalDivider = 1.0f / DeltaTime;
-	float Divider = OriginalDivider;
-	float Remainder = Fractional(Divider);
-	float Multiplier = 2.0f;
-	const float Precision = std::min(std::max(KINDA_SMALL_NUMBER * Divider, KINDA_SMALL_NUMBER), 0.1f);
-	while (std::abs(Remainder) > Precision && std::abs(Remainder - 1.0f) > Precision)
-	{
-		Divider = OriginalDivider * Multiplier;
-		Remainder = Fractional(Divider);
-		if (Divider > MaxReferenceRate)
-		{
-			Divider = static_cast<float>(DEFAULT_SAMPLERATE);
-			break;
-		}
-		Multiplier += 1.0f;
-	}
-	return std::min(static_cast<int32>(std::lround(Divider)), static_cast<int32>(MaxReferenceRate));
+	if (Options.bUse30HzToBakeBoneAnimation) return DEFAULT_SAMPLERATE;
+	if (Options.CustomBoneAnimationSampleRate > 0) return static_cast<double>(Options.CustomBoneAnimationSampleRate);
+	return FrameRate > 0.0 ? FrameRate : DEFAULT_SAMPLERATE;
 }
 
-// 곡선의 모든 키를 지나는 초당 키 수를 구한다. 키가 부족하면 0이다. (UE GetAnimationCurveRate)
-int32 GetAnimationCurveRate(FbxAnimCurve* Curve)
-{
-	if (!Curve) return 0;
-	const int32 KeyCount = Curve->KeyGetCount();
-	FbxTimeSpan Interval(FBXSDK_TIME_INFINITE, FBXSDK_TIME_MINUS_INFINITE);
-	if (KeyCount <= 1 || !Curve->GetTimeInterval(Interval)) return 0;
-	const double Length = Interval.GetDuration().GetSecondDouble();
-	if (Length == 0.0) return 0;
-
-	// 키가 초당 30개 이상이면 간격이 일정하다고 보고 평균을 그대로 쓴다.
-	int32 SampleRate = static_cast<int32>(std::lround((KeyCount - 1) / Length));
-	if (SampleRate >= DEFAULT_SAMPLERATE) return SampleRate;
-
-	// 그보다 적으면 키 간격마다 초당 키 수를 구해 최소공배수를 쓴다.
-	SampleRate = 1;
-	double OldKeyTime = 0.0;
-	std::set<int32> DeltaComputed;
-	const double KeyMultiplier = 1.0 / KINDA_SMALL_NUMBER;
-	for (int32 KeyIndex = 0; KeyIndex < KeyCount; ++KeyIndex)
-	{
-		const double KeyTime = Curve->KeyGet(KeyIndex).GetTime().GetSecondDouble();
-		double Delta = (KeyTime < 0 && KeyIndex == 0) ? 0.0 : KeyTime - OldKeyTime;
-		Delta -= std::trunc(Delta);
-		const int32 DeltaKey = static_cast<int32>(std::lround(Delta * KeyMultiplier));
-		if (std::abs(Delta) > KINDA_SMALL_NUMBER && !DeltaComputed.contains(DeltaKey))
-		{
-			const int32 ComputedRate = GetTimeSampleRate(static_cast<float>(Delta));
-			DeltaComputed.insert(DeltaKey);
-			const int32 LeastCommonMultiplier = std::min(std::lcm(SampleRate, ComputedRate), static_cast<int32>(MaxReferenceRate));
-			SampleRate = LeastCommonMultiplier != 0 ? LeastCommonMultiplier : std::max({ DEFAULT_SAMPLERATE, SampleRate, ComputedRate });
-		}
-		OldKeyTime = KeyTime;
-	}
-	return SampleRate;
-}
-
-// 노드의 위치, 회전, 크기 곡선에서 초당 키 수를 모은다. (UE GetNodeSampleRate)
-void GetNodeSampleRate(FbxNode* Node, FbxAnimLayer* Layer, std::vector<int32>& OutRates)
+// 이 클립에서 노드의 위치, 회전, 크기 곡선이 하나라도 있는지 본다. (UE FFbxAnimation GetFbxTransformCurves)
+bool IsNodeAnimated(FbxNode* Node, FbxAnimStack* Stack)
 {
 	FbxPropertyT<FbxDouble3>* Properties[]{ &Node->LclTranslation, &Node->LclRotation, &Node->LclScaling };
 	const char* Components[]{ FBXSDK_CURVENODE_COMPONENT_X, FBXSDK_CURVENODE_COMPONENT_Y, FBXSDK_CURVENODE_COMPONENT_Z };
-	for (auto* Property : Properties) for (const char* Component : Components)
-	{
-		const int32 Rate = GetAnimationCurveRate(Property->GetCurve(Layer, Component, false));
-		if (Rate != 0 && std::find(OutRates.begin(), OutRates.end(), Rate) == OutRates.end()) OutRates.push_back(Rate);
-	}
-}
-
-// 클립의 모든 노드 곡선에서 층을 합칠 때 쓸 초당 키 수를 구한다. (UE GetGlobalAnimStackSampleRate)
-int32 GetGlobalAnimStackSampleRate(FbxScene* Scene, FbxAnimStack* Stack, const FFbxImportOptions& Options)
-{
-	int32 ResampleRate = DEFAULT_SAMPLERATE;
-	if (Options.bResample)
-	{
-		std::vector<int32> CurveAnimSampleRates;
-		int32 MaxStackResampleRate = 0;
-		const int32 LayerCount = Stack->GetMemberCount<FbxAnimLayer>();
-		for (int32 LayerIndex = 0; LayerIndex < LayerCount; ++LayerIndex)
-			for (int32 NodeIndex = 0; NodeIndex < Scene->GetNodeCount(); ++NodeIndex)
-				GetNodeSampleRate(Scene->GetNode(NodeIndex), Stack->GetMember<FbxAnimLayer>(LayerIndex), CurveAnimSampleRates);
-
-		const int32 MaxRate = static_cast<int32>(MaxReferenceRate);
-		MaxStackResampleRate = !CurveAnimSampleRates.empty() ? 1 : MaxStackResampleRate;
-		for (const int32 CurveSampleRate : CurveAnimSampleRates)
-		{
-			if (CurveSampleRate >= MaxRate && MaxStackResampleRate < CurveSampleRate)
-			{
-				MaxStackResampleRate = CurveSampleRate;
-			}
-			else if (MaxStackResampleRate < MaxRate)
-			{
-				const int32 LeastCommonMultiplier = std::lcm(MaxStackResampleRate, CurveSampleRate);
-				MaxStackResampleRate = LeastCommonMultiplier != 0 ? LeastCommonMultiplier : std::max({ DEFAULT_SAMPLERATE, MaxStackResampleRate, CurveSampleRate });
-				if (MaxStackResampleRate >= MaxRate) MaxStackResampleRate = MaxRate;
-			}
-		}
-		if (MaxStackResampleRate != 0) ResampleRate = MaxStackResampleRate;
-	}
-	return ResampleRate;
+	for (int32 LayerIndex = 0; LayerIndex < Stack->GetMemberCount<FbxAnimLayer>(); ++LayerIndex)
+		for (auto* Property : Properties) for (const char* Component : Components)
+			if (Property->GetCurve(Stack->GetMember<FbxAnimLayer>(LayerIndex), Component, false)) return true;
+	return false;
 }
 
 // 회전 곡선을 이어지는 값으로 고친다. 예: 359도 다음 1도 → 359도 다음 361도. (UE ApplyUnroll)
@@ -412,7 +327,7 @@ void ApplyUnroll(FbxNode* Node, FbxAnimLayer* Layer, FbxAnimCurveFilterUnroll* U
 	for (int32 I = 0; I < Node->GetChildCount(); ++I) ApplyUnroll(Node->GetChild(I), Layer, UnrollFilter);
 }
 
-// 좌표 변환은 0번 층에만 적용되므로 변환 전에 층을 하나로 합친다. (UE MergeAllLayerAnimation)
+// DeepConvertScene은 0번 층만 변환하므로 변환 전에 층을 하나로 합친다. (UE 이전 임포터 MergeAllLayerAnimation)
 void MergeAllLayerAnimation(FbxScene* Scene, FbxAnimStack* Stack, int32 ResampleRate)
 {
 	FbxTime FramePeriod;
@@ -457,7 +372,7 @@ public:
 	fs::path Source;
 	fs::path Destination;
 	double UnitScale = 1;
-	double OriginalFbxFramerate = 0;
+	double FrameRate = 0;
 	bool bBlender = false;
 	TArray<FFbxAssetData>& Output;
 	TArray<FString>& Warnings;
@@ -473,7 +388,7 @@ public:
 	std::unordered_map<FString, FString> FileOwners;
 	std::unordered_set<FString> Warned;
 	std::vector<FbxPose*> Poses;
-	TArray<FFbxAnimationData> Animations;
+	std::vector<FFbxAssetData> Animations;
 
 	FImport(FbxScene* S, const FFbxImportOptions& O, const FString& K, const fs::path& P, const fs::path& D,
 		TArray<FFbxAssetData>& Out, TArray<FString>& W, FString& E)
@@ -491,7 +406,9 @@ public:
 	bool PoseMatrix(FbxPose* Pose, FbxNode* Node, FbxAMatrix& Out);
 	FbxAMatrix Bind(FbxNode* Node);
 	FbxAMatrix MeshBind(const FMeshItem& Item);
+	bool IsValidBindPose(FbxNode* RootJoint);
 	bool BuildRig(FRig& Rig);
+	void RebindToTimeZero(const FRig& Rig, FFbxMeshLODData& LOD);
 	FString Material(FbxSurfaceMaterial* SourceMaterial);
 	FString Texture(FbxProperty Property);
 	FString OpacityTexture(FbxSurfaceMaterial* Material, const FString& DiffuseKey, const FString& OpacityKey, const FString& Identity, ESamplerState Sampler);
@@ -499,8 +416,7 @@ public:
 	bool CookMesh(const FOutputGroup& Group);
 	bool AppendMesh(const FMeshItem& Item, FFbxAssetData& Asset, int LOD, std::map<uint32, std::vector<uint32>>& Sections);
 	void LODThresholds(const FOutputGroup& Group, FFbxAssetData& Asset);
-	FbxTimeSpan GetAnimationTimeSpan(FbxNode* RootNode, FbxAnimStack* AnimStack);
-	int32 GetMaxSampleRate(const FRig& Rig);
+	bool GetAnimationRange(FbxNode* RootNode, FbxAnimStack* Stack, double SampleRate, double& OutStart, double& OutStop);
 	void CookAnimations(const FRig& Rig);
 	bool Run();
 };
@@ -703,19 +619,71 @@ FbxAMatrix FImport::MeshBind(const FMeshItem& Item)
 	return Bind(Item.Node);
 }
 
+// FBX SDK 검사를 통과하는 노드가 하나라도 있으면 유효하다. (UE FFbxScene::IsValidBindPose)
+bool FImport::IsValidBindPose(FbxNode* RootJoint)
+{
+	int PoseCount = Scene->GetPoseCount();
+	if (PoseCount == 0)
+	{
+		Scene->GetFbxManager()->CreateMissingBindPoses(Scene);
+		PoseCount = Scene->GetPoseCount();
+	}
+
+	std::vector<FbxNode*> Nodes;
+	std::function<void(FbxNode*)> Collect = [&](FbxNode* Node)
+	{
+		Nodes.push_back(Node);
+		for (int C = 0; C < Node->GetChildCount(); ++C) Collect(Node->GetChild(C));
+	};
+	Collect(RootJoint);
+
+	for (int PoseIndex = 0; PoseIndex < PoseCount; ++PoseIndex)
+	{
+		FbxPose* Pose = Scene->GetPose(PoseIndex);
+		if (!Pose || !Pose->IsBindPose()) continue;
+		for (FbxNode* Current : Nodes)
+		{
+			FbxArray<FbxNode*> MissingAncestors, MissingDeformers, MissingDeformersAncestors, WrongMatrices;
+			if (Pose->IsValidBindPoseVerbose(Current, MissingAncestors, MissingDeformers, MissingDeformersAncestors, WrongMatrices, 1.e-4)) return true;
+
+			for (int A = 0; A < MissingAncestors.GetCount(); ++A)
+				Pose->Add(MissingAncestors[A], MissingAncestors[A]->EvaluateGlobalTransform(FBXSDK_TIME_ZERO));
+			if (Pose->IsValidBindPose(Current)) return true;
+
+			FbxNode* Parent = Current->GetParent();
+			for (; Parent; Parent = Parent->GetParent())
+				if (auto* Attribute = Parent->GetNodeAttribute(); Attribute && Attribute->GetAttributeType() == FbxNodeAttribute::eNull) break;
+			if (Parent && Pose->IsValidBindPose(Parent)) return true;
+		}
+	}
+	return false;
+}
+
 bool FImport::BuildRig(FRig& Rig)
 {
 	Rig.ParentBind = Bind(Rig.Root->GetParent());
 	const FbxAMatrix FrameInverse = Options.bBakeSkeletalMeshes ? FbxAMatrix() : Rig.ParentBind.Inverse();
 	if (!FiniteMatrix(EngineMatrix(Rig.ParentBind, UnitScale))) { Error = "Singular rig parent bind transform"; return false; }
+	const auto BoneGlobal = [&](FbxNode* Node) -> FbxAMatrix
+	{
+		return FrameInverse * (Rig.bUseTimeZeroAsBindPose ? Node->EvaluateGlobalTransform(FBXSDK_TIME_ZERO) : Bind(Node));
+	};
+	FReferenceSkeleton BindReference;
 	std::function<bool(FbxNode*, int)> Visit = [&](FbxNode* Node, int Parent)
 	{
 		if (!Rig.Needed.contains(Node)) return true;
 		if (Rig.Bones.size() >= 65536) { Error = "More than 65536 bones in a rig"; return false; }
 		const uint16 Index = static_cast<uint16>(Rig.Bones.size());
 		Rig.Bones.push_back(Node); Rig.Indices[Node] = Index;
-		const FbxAMatrix Global = FrameInverse * Bind(Node);
-		const FbxAMatrix Local = Parent < 0 ? Global : (FrameInverse * Bind(Rig.Bones[Parent])).Inverse() * Global;
+		const FbxAMatrix Global = BoneGlobal(Node);
+		const FbxAMatrix Local = Parent < 0 ? Global : BoneGlobal(Rig.Bones[Parent]).Inverse() * Global;
+		if (Rig.bUseTimeZeroAsBindPose)
+		{
+			const FbxAMatrix BindGlobal = FrameInverse * Bind(Node);
+			const FbxAMatrix BindLocal = Parent < 0 ? BindGlobal : (FrameInverse * Bind(Rig.Bones[Parent])).Inverse() * BindGlobal;
+			BindReference.RefBoneInfo.Add({ Node->GetName(), Parent });
+			BindReference.RefBonePose.Add(EnginePose(BindLocal, UnitScale));
+		}
 		const FMatrix Converted = EngineMatrix(Local, UnitScale);
 		if (!FiniteMatrix(Converted)) { Error = "Invalid bind transform: " + NodePath(Node); return false; }
 		const FTransform Transform = EnginePose(Local, UnitScale);
@@ -730,6 +698,13 @@ bool FImport::BuildRig(FRig& Rig)
 		return true;
 	};
 	if (!Visit(Rig.Root, -1) || !Rig.Reference.Validate(Error)) return false;
+	if (Rig.bUseTimeZeroAsBindPose)
+	{
+		TArray<FMatrix> BindModel, TimeZeroModel;
+		if (!BindReference.GetModelSpaceMatrices(BindModel, Error) || !Rig.Reference.GetModelSpaceMatrices(TimeZeroModel, Error)) return false;
+		Rig.TimeZeroRebindMatrices.SetNum(TimeZeroModel.Num());
+		for (int32 Bone = 0; Bone < TimeZeroModel.Num(); ++Bone) Rig.TimeZeroRebindMatrices[Bone] = BindModel[Bone].Inverse() * TimeZeroModel[Bone];
+	}
 	Rig.Key = MakeKey("SKEL", Rig.Root->GetName(), "Skeleton:" + NodePath(Rig.Root));
 	if (Rig.Key.empty()) return false;
 	auto Asset = Data(EFbxAssetType::Skeleton, Rig.Key, "Skeleton:" + NodePath(Rig.Root));
@@ -1205,6 +1180,32 @@ void FImport::LODThresholds(const FOutputGroup& Group, FFbxAssetData& Asset)
 		if (Asset.ScreenThresholds[I] >= Asset.ScreenThresholds[I - 1]) Asset.ScreenThresholds[I] = Asset.ScreenThresholds[I - 1] * .5f;
 }
 
+// 정점을 가중치대로 0초 자세로 옮긴다. 런타임 스키닝과 같은 계산이다. (UE InterchangeSkeletalMeshFactory)
+void FImport::RebindToTimeZero(const FRig& Rig, FFbxMeshLODData& LOD)
+{
+	auto& Vertices = LOD.MeshData.Vertices;
+	for (int32 V = 0; V < Vertices.Num(); ++V)
+	{
+		FVertex& Vertex = Vertices[V];
+		const FVector BindPosition = Vertex.Position, BindNormal = Vertex.Normal;
+		const FVector BindTangent(Vertex.Tangent.X, Vertex.Tangent.Y, Vertex.Tangent.Z);
+		FVector Position = FVector::ZeroVector, Normal = FVector::ZeroVector, Tangent = FVector::ZeroVector;
+		for (int K = 0; K < 4; ++K)
+		{
+			const float Weight = LOD.SkinWeights.InfluenceWeights[V][K];
+			if (Weight <= 0.f) continue;
+			const FMatrix& Matrix = Rig.TimeZeroRebindMatrices[LOD.SkinWeights.InfluenceBones[V][K]];
+			Position += Matrix.TransformPosition(BindPosition) * Weight;
+			Normal += Matrix.TransformVector(BindNormal) * Weight;
+			Tangent += Matrix.TransformVector(BindTangent) * Weight;
+		}
+		Vertex.Position = Position;
+		Vertex.Normal = Normal.GetSafeNormal();
+		const FVector NewTangent = Tangent.GetSafeNormal();
+		Vertex.Tangent = FVector4(NewTangent.X, NewTangent.Y, NewTangent.Z, Vertex.Tangent.W);
+	}
+}
+
 bool FImport::CookMesh(const FOutputGroup& Group)
 {
 	const bool Skinned = Group.Root != nullptr;
@@ -1237,6 +1238,8 @@ bool FImport::CookMesh(const FOutputGroup& Group)
 				Mesh.BuildTangentSpace();
 				for (const auto& [Index, Tangent] : SourceTangents) Mesh.Vertices[Index].Tangent = Tangent;
 			}
+			if (Skinned)
+				if (const auto& Rig = Rigs.at(NodePath(Group.Root)); Rig.bUseTimeZeroAsBindPose) RebindToTimeZero(Rig, Asset.LODs[L]);
 			FVector Min = Mesh.Vertices[0].Position, Max = Min;
 			for (const auto& V : Mesh.Vertices)
 			{
@@ -1253,84 +1256,70 @@ bool FImport::CookMesh(const FOutputGroup& Group)
 	return true;
 }
 
-// Animation Length 옵션에 맞는 클립 구간을 구한다. (UE GetAnimationTimeSpan)
-FbxTimeSpan FImport::GetAnimationTimeSpan(FbxNode* RootNode, FbxAnimStack* AnimStack)
+// 옵션에 맞는 클립 구간을 정하고 프레임 경계에 맞춘다. 맞출 수 없으면 false다. (UE UInterchangeGenericAnimationPipeline)
+bool FImport::GetAnimationRange(FbxNode* RootNode, FbxAnimStack* Stack, double SampleRate, double& OutStart, double& OutStop)
 {
-	FbxTimeSpan AnimTimeSpan(FBXSDK_TIME_INFINITE, FBXSDK_TIME_MINUS_INFINITE);
-	const bool bUseDefault = Options.AnimationLengthImportType == FBXALIT_ExportedTime || std::abs(OriginalFbxFramerate) <= KINDA_SMALL_NUMBER;
-	if (bUseDefault)
+	const FString StackName = Stack->GetName();
+	if (Options.AnimationRange == EInterchangeAnimationRange::Timeline)
 	{
-		AnimTimeSpan = AnimStack->GetLocalTimeSpan();
+		const FbxTimeSpan Span = Stack->GetLocalTimeSpan();
+		OutStart = Span.GetStart().GetSecondDouble();
+		OutStop = Span.GetStop().GetSecondDouble();
 	}
-	else if (Options.AnimationLengthImportType == FBXALIT_AnimatedKey)
+	else if (Options.AnimationRange == EInterchangeAnimationRange::SetRange)
 	{
-		RootNode->GetAnimationInterval(AnimTimeSpan, AnimStack);
+		OutStart = Options.FrameImportRangeMin / SampleRate;
+		OutStop = Options.FrameImportRangeMax / SampleRate;
 	}
 	else
 	{
-		AnimTimeSpan = AnimStack->GetLocalTimeSpan();
-
-		FbxTimeSpan AnimatedInterval(FBXSDK_TIME_INFINITE, FBXSDK_TIME_MINUS_INFINITE);
-		RootNode->GetAnimationInterval(AnimatedInterval, AnimStack);
-
-		// 두 구간을 모두 덮는 범위를 프레임 번호의 허용 범위로 쓴다.
-		const FbxTime StartTime = AnimatedInterval.GetStart() < AnimTimeSpan.GetStart() ? AnimatedInterval.GetStart() : AnimTimeSpan.GetStart();
-		const FbxTime StopTime = AnimatedInterval.GetStop() > AnimTimeSpan.GetStop() ? AnimatedInterval.GetStop() : AnimTimeSpan.GetStop();
-		AnimTimeSpan.SetStart(StartTime);
-		AnimTimeSpan.SetStop(StopTime);
-
-		const FbxLongLong Interval = FBXSDK_TC_SECOND / static_cast<FbxLongLong>(OriginalFbxFramerate);
-		const int32 StartFrame = static_cast<int32>(StartTime.Get() / Interval);
-		const int32 StopFrame = static_cast<int32>(StopTime.Get() / Interval);
-		if (StartFrame != StopFrame)
-		{
-			const int32 AnimRangeX = std::clamp(Options.AnimationRangeStart, StartFrame, StopFrame);
-			const int32 AnimRangeY = std::clamp(Options.AnimationRangeEnd, StartFrame, StopFrame);
-			if (StartFrame != AnimRangeX) AnimTimeSpan.SetStart(FbxTime(AnimRangeX * Interval));
-			if (StopFrame != AnimRangeY) AnimTimeSpan.SetStop(FbxTime(AnimRangeY * Interval));
-		}
+		FbxTimeSpan Span(FBXSDK_TIME_INFINITE, FBXSDK_TIME_MINUS_INFINITE);
+		RootNode->GetAnimationInterval(Span, Stack);
+		OutStart = Span.GetStart().GetSecondDouble();
+		OutStop = Span.GetStop().GetSecondDouble();
 	}
-	return AnimTimeSpan;
+
+	const auto SubFrame = [](double Frame) { return Frame - std::floor(Frame); };
+	const auto IsFrameBorder = [](double Sub) { return Sub <= KINDA_SMALL_NUMBER || 1.0 - Sub <= KINDA_SMALL_NUMBER; };
+	const double SequenceLength = std::max(OutStop - OutStart, MINIMUM_ANIMATION_LENGTH);
+	if (!IsFrameBorder(SubFrame(SequenceLength * SampleRate)))
+	{
+		if (Options.FrameAlignment == EInterchangeFrameAlignment::None)
+		{
+			Warn("Animation length " + std::to_string(SequenceLength) + " is not compatible with frame rate " + std::to_string(SampleRate) +
+				"; enable Frame Alignment to import: " + StackName);
+			return false;
+		}
+		const auto Align = [&](double Time)
+		{
+			const double Frame = Time * SampleRate;
+			if (IsFrameBorder(SubFrame(Frame))) return Time;
+			switch (Options.FrameAlignment)
+			{
+			case EInterchangeFrameAlignment::SnapToFloor: return std::floor(Frame) / SampleRate;
+			case EInterchangeFrameAlignment::SnapToClosest: return std::round(Frame) / SampleRate;
+			case EInterchangeFrameAlignment::SnapToCeiling: return std::ceil(Frame) / SampleRate;
+			default: return Time;
+			}
+		};
+		OutStart = Align(OutStart);
+		OutStop = Align(OutStop);
+		Warn("Animation length has been adjusted to align with frame borders: " + StackName);
+	}
+	if (OutStop <= OutStart)
+	{
+		Warn("Animation range is empty: " + StackName);
+		return false;
+	}
+	return true;
 }
 
-// 파일의 모든 클립에서 이 리그의 곡선을 훑어 초당 키 수 하나를 구한다. (UE GetMaxSampleRate)
-int32 FImport::GetMaxSampleRate(const FRig& Rig)
-{
-	std::vector<int32> CurveAnimSampleRates;
-	for (int32 StackIndex = 0; StackIndex < Scene->GetSrcObjectCount<FbxAnimStack>(); ++StackIndex)
-	{
-		FbxAnimStack* Stack = Scene->GetSrcObject<FbxAnimStack>(StackIndex);
-		for (int32 LayerIndex = 0; LayerIndex < Stack->GetMemberCount<FbxAnimLayer>(); ++LayerIndex)
-			for (FbxNode* Bone : Rig.Bones)
-				GetNodeSampleRate(Bone, Stack->GetMember<FbxAnimLayer>(LayerIndex), CurveAnimSampleRates);
-	}
-
-	const int32 MaxRate = static_cast<int32>(MaxReferenceRate);
-	int32 MaxStackResampleRate = !CurveAnimSampleRates.empty() ? 1 : 0;
-	for (const int32 CurveSampleRate : CurveAnimSampleRates)
-	{
-		if (CurveSampleRate >= MaxRate && MaxStackResampleRate < CurveSampleRate)
-		{
-			MaxStackResampleRate = CurveSampleRate;
-		}
-		else if (MaxStackResampleRate < MaxRate)
-		{
-			const int32 LeastCommonMultiplier = std::lcm(MaxStackResampleRate, CurveSampleRate);
-			MaxStackResampleRate = LeastCommonMultiplier != 0 ? LeastCommonMultiplier : std::max({ DEFAULT_SAMPLERATE, MaxStackResampleRate, CurveSampleRate });
-			if (MaxStackResampleRate >= MaxRate) MaxStackResampleRate = MaxRate;
-		}
-	}
-	return MaxStackResampleRate != 0 ? MaxStackResampleRate : DEFAULT_SAMPLERATE;
-}
-
-// 클립마다 일정한 간격으로 본의 값을 물어 키를 만든다. (UE ImportBoneTracks)
+// 움직이는 본이 있는 클립마다 일정한 간격으로 본의 값을 물어 키를 만든다. (UE FFbxScene::AddAnimation, FFbxAnimation)
 void FImport::CookAnimations(const FRig& Rig)
 {
-	int32 SampleRate = DEFAULT_SAMPLERATE;
-	if (Options.bResample) SampleRate = Options.ResampleRate > 0 ? Options.ResampleRate : GetMaxSampleRate(Rig);
-	FbxTime TimeIncrement;
-	TimeIncrement.SetSecondDouble(1.0 / SampleRate);
-	const FbxTime TimeComparisonThreshold(static_cast<FbxLongLong>(KINDA_SMALL_NUMBER * static_cast<float>(FBXSDK_TC_SECOND)));
+	const double SampleRate = GetBoneAnimationSampleRate(Options, FrameRate);
+	FbxTime TimeStep = 0;
+	TimeStep.SetSecondDouble(1.0 / SampleRate);
 
 	const int32 BoneCount = static_cast<int32>(Rig.Bones.size());
 	// 부모 기준 값 계산은 BuildRig의 기본 자세와 같은 규칙을 따른다.
@@ -1340,39 +1329,55 @@ void FImport::CookAnimations(const FRig& Rig)
 	for (int32 StackIndex = 0; StackIndex < Scene->GetSrcObjectCount<FbxAnimStack>(); ++StackIndex)
 	{
 		FbxAnimStack* Stack = Scene->GetSrcObject<FbxAnimStack>(StackIndex);
-		Scene->SetCurrentAnimationStack(Stack);
 		const FString StackName = Stack->GetName();
-		const FbxTimeSpan Span = GetAnimationTimeSpan(Rig.Root, Stack);
-		if (Span.GetDuration() <= 0)
+
+		// 곡선이 있는 본과 그 자식 본만 트랙을 만든다. Rig.Bones는 부모가 항상 자식보다 앞에 있다.
+		std::vector<bool> ValidTracks(BoneCount, false);
+		bool bHasAnimatedBone = false;
+		for (int32 Bone = 0; Bone < BoneCount; ++Bone)
 		{
-			Warn("Animation stack does not contain any valid key: " + StackName);
+			const int32 Parent = Rig.Reference.RefBoneInfo[Bone].ParentIndex;
+			ValidTracks[Bone] = IsNodeAnimated(Rig.Bones[Bone], Stack) || (Parent >= 0 && ValidTracks[Parent]);
+			bHasAnimatedBone = bHasAnimatedBone || ValidTracks[Bone];
+		}
+		if (!bHasAnimatedBone)
+		{
+			Warn("Animation stack has no animated bones: " + StackName);
 			continue;
 		}
 
-		FFbxAnimationData Animation;
-		Animation.Name = StackName;
-		Animation.SkeletonKey = Rig.Key;
-		Animation.FrameRate = static_cast<float>(SampleRate);
-		const int32 KeyTotal = static_cast<int32>(std::lround(Span.GetDuration().GetSecondDouble() * SampleRate)) + 1;
+		double StartSeconds = 0.0, StopSeconds = 0.0;
+		if (!GetAnimationRange(Rig.Root, Stack, SampleRate, StartSeconds, StopSeconds)) continue;
+		Scene->SetCurrentAnimationStack(Stack);
+
+		const double SequenceLength = std::max(StopSeconds - StartSeconds, 1.0 / SampleRate);
+		const int32 NumFrame = static_cast<int32>(std::lround(SequenceLength * SampleRate));
+		const int32 BakeKeyCount = NumFrame + 1;
+
+		FFbxAssetData Asset = Data(EFbxAssetType::AnimSequence, {}, "Animation:" + NodePath(Rig.Root) + StackName);
+		Asset.SkeletonKey = Rig.Key;
+		Asset.Animation.Name = StackName;
+		Asset.Animation.FrameRate = static_cast<float>(SampleRate);
+		Asset.Animation.NumberOfFrames = NumFrame;
+		Asset.Animation.NumberOfKeys = BakeKeyCount;
 
 		std::vector<FBoneAnimationTrack> Tracks(BoneCount);
-		std::vector<bool> ValidTracks(BoneCount, true);
 		for (int32 Bone = 0; Bone < BoneCount; ++Bone)
 		{
 			Tracks[Bone].Name = Rig.Reference.RefBoneInfo[Bone].Name;
 			Tracks[Bone].BoneTreeIndex = Bone;
-			Tracks[Bone].InternalTrackData.PosKeys.Reserve(KeyTotal);
-			Tracks[Bone].InternalTrackData.RotKeys.Reserve(KeyTotal);
-			Tracks[Bone].InternalTrackData.ScaleKeys.Reserve(KeyTotal);
+			Tracks[Bone].InternalTrackData.PosKeys.Reserve(BakeKeyCount);
+			Tracks[Bone].InternalTrackData.RotKeys.Reserve(BakeKeyCount);
+			Tracks[Bone].InternalTrackData.ScaleKeys.Reserve(BakeKeyCount);
 		}
 
-		int32 KeyNum = 0;
-		for (FbxTime CurTime = Span.GetStart(); CurTime < (Span.GetStop() + TimeComparisonThreshold); CurTime += TimeIncrement)
+		FbxTime CurrentTime;
+		CurrentTime.SetSecondDouble(StartSeconds);
+		for (int32 FrameIndex = 0; FrameIndex < BakeKeyCount; ++FrameIndex, CurrentTime += TimeStep)
 		{
-			// Rig.Bones는 부모가 항상 자식보다 앞에 있어 부모 값을 먼저 구할 수 있다.
 			for (int32 Bone = 0; Bone < BoneCount; ++Bone)
 			{
-				Globals[Bone] = FrameInverse * Rig.Bones[Bone]->EvaluateGlobalTransform(CurTime);
+				Globals[Bone] = FrameInverse * Rig.Bones[Bone]->EvaluateGlobalTransform(CurrentTime);
 				if (!ValidTracks[Bone]) continue;
 
 				const int32 Parent = Rig.Reference.RefBoneInfo[Bone].ParentIndex;
@@ -1389,21 +1394,18 @@ void FImport::CookAnimations(const FRig& Rig)
 				Track.RotKeys.Add(Pose.Rotation);
 				Track.ScaleKeys.Add(Pose.Scale);
 			}
-			++KeyNum;
 		}
-		Animation.NumberOfKeys = KeyNum;
-		Animation.NumberOfFrames = std::max(KeyNum - 1, 1); // 한 프레임보다 짧은 클립도 길이를 1로 둔다.
 
 		for (int32 Bone = 0; Bone < BoneCount; ++Bone)
 		{
 			if (!ValidTracks[Bone]) continue;
 			CompressRawAnimSequenceTrack(Tracks[Bone].InternalTrackData);
-			Animation.Tracks.Add(std::move(Tracks[Bone]));
+			Asset.Animation.Tracks.Add(std::move(Tracks[Bone]));
 		}
 
 		HTR_LOG(Info, "FBX Animation: {} (Skeleton {}) FrameRate={} Frames={} Keys={} Tracks={}/{}",
-			Animation.Name, Animation.SkeletonKey, Animation.FrameRate, Animation.NumberOfFrames, Animation.NumberOfKeys, Animation.Tracks.Num(), BoneCount);
-		Animations.Add(std::move(Animation));
+			StackName, Rig.Key, Asset.Animation.FrameRate, NumFrame, BakeKeyCount, Asset.Animation.Tracks.Num(), BoneCount);
+		Animations.push_back(std::move(Asset));
 	}
 }
 
@@ -1416,7 +1418,17 @@ bool FImport::Run()
 	// 메시가 연결되는 리그만 출력한다. 포즈/컨트롤 본은 실제 본 테이블에 유지된다.
 	std::set<FbxNode*> Used;
 	for (const auto& Item : Meshes) if (Item.Rig) Used.insert(Item.Rig);
-	for (auto& [Path, Rig] : Rigs) if (Used.contains(Rig.Root) && !BuildRig(Rig)) return false;
+	for (auto& [Path, Rig] : Rigs) if (Used.contains(Rig.Root))
+	{
+		// 바인드 포즈가 유효하지 않으면 옵션과 상관없이 0초 자세를 쓴다. (UE InterchangeGenericCommonSkeletalMeshesAndAnimationsProperties)
+		Rig.bUseTimeZeroAsBindPose = Options.bUseT0AsRefPose;
+		if (!Rig.bUseTimeZeroAsBindPose && !IsValidBindPose(Rig.Root))
+		{
+			Rig.bUseTimeZeroAsBindPose = true;
+			Warn("Invalid BindPose; mesh is rebound to the time 0 pose: " + NodePath(Rig.Root));
+		}
+		if (!BuildRig(Rig)) return false;
+	}
 	std::map<FString, FOutputGroup> Groups;
 	for (auto& Item : Meshes)
 	{
@@ -1428,8 +1440,15 @@ bool FImport::Run()
 		Group.Items.push_back(&Item);
 	}
 	for (const auto& [Key, Group] : Groups) if (!CookMesh(Group)) return false;
-	if (Options.bImportAnimations)
+	if (Options.bImportAnimations && Options.bImportBoneTracks)
 		for (const auto& [Path, Rig] : Rigs) if (Used.contains(Rig.Root)) CookAnimations(Rig);
+	// 클립이 하나면 "파일이름_Anim", 여러 개면 클립 이름을 쓴다. (UE InterchangeGenericAssetsPipeline)
+	for (auto& Asset : Animations)
+	{
+		Asset.Key = MakeKey("ANIM", Animations.size() == 1 ? FString("Anim") : Asset.Animation.Name, Asset.SourceObject);
+		if (Asset.Key.empty()) return false;
+		Output.Add(std::move(Asset));
+	}
 	std::set<FString> ReferencedTextures;
 	for (const auto& Asset : Output) if (Asset.Type == EFbxAssetType::Material)
 	{
@@ -1474,11 +1493,12 @@ bool FFbxImporter::Cook(const FString& SourcePath, const FFbxImportOptions& Opti
 		if (auto* Info = Scene->GetSceneInfo()) Blender = Lower(Info->Original_ApplicationName.Get().Buffer()).find("blender") != FString::npos;
 		const double UnitScale = Scene->GetGlobalSettings().GetSystemUnit().GetScaleFactor() / 100.;
 		if (!std::isfinite(UnitScale) || UnitScale <= 0) { Error = "Invalid FBX scene unit"; return false; }
+		const double FbxFrameRate = FbxTime::GetFrameRate(Scene->GetGlobalSettings().GetTimeMode());
 		for (int32 StackIndex = 0; StackIndex < Scene->GetSrcObjectCount<FbxAnimStack>(); ++StackIndex)
 		{
 			FbxAnimStack* Stack = Scene->GetSrcObject<FbxAnimStack>(StackIndex);
 			if (Stack->GetMemberCount<FbxAnimLayer>() > 1)
-				MergeAllLayerAnimation(Scene, Stack, GetGlobalAnimStackSampleRate(Scene, Stack, Options));
+				MergeAllLayerAnimation(Scene, Stack, static_cast<int32>(std::lround(GetBoneAnimationSampleRate(Options, FbxFrameRate))));
 		}
 		// UE의 Z-up/-ParityOdd 기준을 사용한다. Deep 변환으로 Bake off의 로컬 기하도 같은 축이 된다.
 		FbxAxisSystem Target(FbxAxisSystem::eZAxis, static_cast<FbxAxisSystem::EFrontVector>(-FbxAxisSystem::eParityOdd), FbxAxisSystem::eRightHanded);
@@ -1487,7 +1507,7 @@ bool FFbxImporter::Cook(const FString& SourcePath, const FFbxImportOptions& Opti
 		if (!Converter.Triangulate(Scene, true)) { Error = "FBX SDK triangulation failed"; return false; }
 		FImport Import(Scene, Options, SourceKey, Source, Destination, Out, Warnings, Error);
 		Import.UnitScale = UnitScale; Import.bBlender = Blender;
-		Import.OriginalFbxFramerate = FbxTime::GetFrameRate(Scene->GetGlobalSettings().GetTimeMode());
+		Import.FrameRate = FbxFrameRate;
 		const bool Result = Import.Run();
 		if (!Result) Out.Empty();
 		return Result;

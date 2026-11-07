@@ -133,6 +133,19 @@ void Serialize(FBinary& Ar, FFbxAssetData& Data)
 		Data.Material.BlendState = static_cast<EBlendState>(Blend);
 		Ar.String(Data.Material.DiffuseTexture); Ar.String(Data.Material.NormalTexture);
 	}
+	else if (Data.Type == EFbxAssetType::AnimSequence)
+	{
+		Ar.String(Data.SkeletonKey); Ar.String(Data.Animation.Name);
+		Ar.Pod(Data.Animation.FrameRate); Ar.Pod(Data.Animation.NumberOfFrames); Ar.Pod(Data.Animation.NumberOfKeys);
+		uint32 TrackCount = Data.Animation.Tracks.Num(); Ar.Pod(TrackCount);
+		if (!Ar.bGood || TrackCount > 65536) { Ar.bGood = false; return; }
+		if (Ar.In) Data.Animation.Tracks.SetNum(TrackCount);
+		for (auto& Track : Data.Animation.Tracks)
+		{
+			Ar.String(Track.Name); Ar.Pod(Track.BoneTreeIndex);
+			Ar.Array(Track.InternalTrackData.PosKeys); Ar.Array(Track.InternalTrackData.RotKeys); Ar.Array(Track.InternalTrackData.ScaleKeys);
+		}
+	}
 	else if (Data.Type == EFbxAssetType::Texture2D)
 	{
 		Ar.Pod(Data.Texture.Width); Ar.Pod(Data.Texture.Height); Ar.Pod(Data.Texture.BytesPerPixel);
@@ -200,6 +213,23 @@ bool FFbxAssetData::Validate(FString& Error) const
 		if (Material.BlendState != EBlendState::Opaque && Material.BlendState != EBlendState::AlphaBlend)
 		{ Error = "Unsupported FBX material blend mode"; return false; }
 	}
+	else if (Type == EFbxAssetType::AnimSequence)
+	{
+		if (SkeletonKey.empty()) { Error = "Missing Skeleton asset reference"; return false; }
+		if (!std::isfinite(Animation.FrameRate) || Animation.FrameRate <= 0.f || Animation.NumberOfFrames < 1 || Animation.NumberOfKeys != Animation.NumberOfFrames + 1)
+		{ Error = "Invalid animation frame data"; return false; }
+		const auto ValidKeyCount = [&](int32 Count) { return Count == 1 || Count == Animation.NumberOfKeys; };
+		for (const auto& Track : Animation.Tracks)
+		{
+			const auto& Keys = Track.InternalTrackData;
+			if (Track.BoneTreeIndex < 0 || !ValidKeyCount(Keys.PosKeys.Num()) || !ValidKeyCount(Keys.RotKeys.Num()) || !ValidKeyCount(Keys.ScaleKeys.Num()))
+			{ Error = "Invalid animation track size"; return false; }
+			for (const auto& Key : Keys.PosKeys) if (!Finite(Key)) { Error = "Non-finite animation key"; return false; }
+			for (const auto& Key : Keys.ScaleKeys) if (!Finite(Key)) { Error = "Non-finite animation key"; return false; }
+			for (const auto& Key : Keys.RotKeys)
+				if (!std::isfinite(Key.X) || !std::isfinite(Key.Y) || !std::isfinite(Key.Z) || !std::isfinite(Key.W)) { Error = "Non-finite animation key"; return false; }
+		}
+	}
 	else if (Type == EFbxAssetType::Texture2D)
 	{
 		uint32 BlockBytes = 0;
@@ -229,7 +259,7 @@ bool FFbxAssetBake::ReadBaked(const FString& Path, FFbxAssetData& Out, FString& 
 	if (!In) { Error = "Cannot open FBX binary: " + Path; return false; }
 	FFbxBakeHeader Header, Expected;
 	if (!In.read(reinterpret_cast<char*>(&Header), sizeof(Header)) || std::memcmp(Header.Magic, Expected.Magic, 4) ||
-		Header.Version != FbxBakeVersion || Header.Type < 1 || Header.Type > 5)
+		Header.Version != FbxBakeVersion || Header.Type < 1 || Header.Type > 6)
 	{ Error = "Invalid .fbxbin header/version; import the FBX again: " + Path; return false; }
 	FFbxAssetData Data; Data.Type = static_cast<EFbxAssetType>(Header.Type);
 	FBinary Ar; Ar.In = &In; Serialize(Ar, Data);
@@ -244,7 +274,7 @@ bool FFbxAssetBake::ReadSourceIdentity(const FString& Path, FString& Source, FSt
 	std::ifstream In(FbxPath::FromString(Path), std::ios::binary);
 	FFbxBakeHeader Header, Expected;
 	if (!In.read(reinterpret_cast<char*>(&Header), sizeof(Header)) || std::memcmp(Header.Magic, Expected.Magic, 4) ||
-		Header.Type < 1 || Header.Type > 5) return false;
+		Header.Type < 1 || Header.Type > 6) return false;
 	FBinary Ar; Ar.In = &In; Ar.String(Source); Ar.String(Object);
 	return Ar.bGood;
 }

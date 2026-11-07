@@ -15,13 +15,22 @@ enum class EFbxAssetType : uint32
 	Skeleton,
 	Material,
 	Texture2D,
+	AnimSequence,
 };
 
-enum EFBXAnimationLengthImportType : int
+enum class EInterchangeAnimationRange : int32
 {
-	FBXALIT_ExportedTime, // FBX에 기록된 클립 길이
-	FBXALIT_AnimatedKey, // 키가 실제로 있는 구간
-	FBXALIT_SetRange, // AnimationRangeStart, AnimationRangeEnd로 지정한 프레임 구간
+	Timeline, // FBX에 기록된 클립 구간
+	Animated, // 키가 실제로 있는 구간
+	SetRange, // FrameImportRangeMin, FrameImportRangeMax로 지정한 프레임 구간
+};
+
+enum class EInterchangeFrameAlignment : int32
+{
+	None, // 프레임 경계에 맞지 않는 클립은 임포트하지 않는다.
+	SnapToFloor,
+	SnapToClosest,
+	SnapToCeiling,
 };
 
 struct FFbxImportOptions
@@ -30,12 +39,15 @@ struct FFbxImportOptions
 	bool bCombineStaticMeshes = false;
 	bool bBakeSkeletalMeshes = true;
 	bool bCombineSkeletalMeshes = true;
+	bool bUseT0AsRefPose = false; // 켜면 바인드 포즈가 유효해도 0초 자세를 기본 자세로 쓴다.
 	bool bImportAnimations = true;
-	bool bResample = true; // 꺼지면 초당 30키로 고정한다.
-	int32 ResampleRate = 0; // 0이면 곡선에서 자동으로 구한다.
-	EFBXAnimationLengthImportType AnimationLengthImportType = FBXALIT_ExportedTime;
-	int32 AnimationRangeStart = 0;
-	int32 AnimationRangeEnd = 0;
+	bool bImportBoneTracks = true;
+	EInterchangeAnimationRange AnimationRange = EInterchangeAnimationRange::Timeline;
+	int32 FrameImportRangeMin = 0;
+	int32 FrameImportRangeMax = 0;
+	bool bUse30HzToBakeBoneAnimation = false;
+	int32 CustomBoneAnimationSampleRate = 0; // 0이면 FBX 파일의 프레임레이트를 쓴다.
+	EInterchangeFrameAlignment FrameAlignment = EInterchangeFrameAlignment::None;
 };
 
 struct FFbxMaterialData
@@ -63,7 +75,6 @@ struct FFbxMeshLODData
 struct FFbxAnimationData
 {
 	FString Name;
-	FString SkeletonKey;
 	float FrameRate = 30.0f; // 초당 키 수
 	int32 NumberOfFrames = 0; // 키 사이 구간 수
 	int32 NumberOfKeys = 0;
@@ -85,6 +96,7 @@ struct FFbxAssetData
 	FReferenceSkeleton RefSkeleton;
 	FFbxMaterialData Material;
 	FImageData Texture;
+	FFbxAnimationData Animation;
 
 	bool Validate(FString& Error) const;
 };
