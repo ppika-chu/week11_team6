@@ -8,6 +8,7 @@
 #include <shobjidl.h>
 #include <cstring>
 #include <thread>
+#include <algorithm>
 
 namespace
 {
@@ -404,6 +405,32 @@ void FEditorUI::DrawFbxImportDialog()
 		if (ImGui::IsItemHovered()) ImGui::SetTooltip("On: include placement outside the rig in geometry and bind transforms.\nOff: remove the root bone parent's global bind transform; retain the root bone's own transform.");
 		ImGui::Checkbox("Combine Meshes", &FbxOptions.bCombineSkeletalMeshes);
 		if (ImGui::IsItemHovered()) ImGui::SetTooltip("Combine meshes using the same source rig root. An LOD group remains one asset when disabled.");
+		ImGui::PopID();
+
+		ImGui::SeparatorText("Animation");
+		ImGui::PushID("AnimationFbx");
+		ImGui::Checkbox("Import Animations", &FbxOptions.bImportAnimations);
+		ImGui::BeginDisabled(!FbxOptions.bImportAnimations);
+		bool bUseDefaultSampleRate = !FbxOptions.bResample;
+		if (ImGui::Checkbox("Use Default Sample Rate", &bUseDefaultSampleRate)) FbxOptions.bResample = !bUseDefaultSampleRate;
+		if (ImGui::IsItemHovered()) ImGui::SetTooltip("On: sample all bones at 30 keys per second.");
+		ImGui::BeginDisabled(bUseDefaultSampleRate);
+		if (ImGui::InputInt("Custom Sample Rate", &FbxOptions.ResampleRate)) FbxOptions.ResampleRate = std::clamp(FbxOptions.ResampleRate, 0, 48000);
+		if (ImGui::IsItemHovered()) ImGui::SetTooltip("Keys per second. 0 finds the best rate from the animation curves.");
+		ImGui::EndDisabled();
+		int AnimationLength = static_cast<int>(FbxOptions.AnimationLengthImportType);
+		if (ImGui::Combo("Animation Length", &AnimationLength, "Exported Time\0Animated Time\0Set Range\0"))
+			FbxOptions.AnimationLengthImportType = static_cast<EFBXAnimationLengthImportType>(AnimationLength);
+		if (FbxOptions.AnimationLengthImportType == FBXALIT_SetRange)
+		{
+			int AnimationRange[2]{ FbxOptions.AnimationRangeStart, FbxOptions.AnimationRangeEnd };
+			if (ImGui::InputInt2("Start / End Frame", AnimationRange))
+			{
+				FbxOptions.AnimationRangeStart = std::max(AnimationRange[0], 0);
+				FbxOptions.AnimationRangeEnd = std::max(AnimationRange[1], 0);
+			}
+		}
+		ImGui::EndDisabled();
 		ImGui::PopID();
 
 		if (!FFbxImporter::IsAvailable()) ImGui::TextWrapped("Run SlnGenerator.bat and rebuild the editor to enable FBX import.");

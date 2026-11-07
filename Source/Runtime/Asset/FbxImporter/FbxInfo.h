@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Animation/AnimDataModel.h"
 #include "Animation/ReferenceSkeleton.h"
 #include "Render/SkeletalMesh.h"
 #include "Render/ImageLoader.h"
@@ -16,12 +17,25 @@ enum class EFbxAssetType : uint32
 	Texture2D,
 };
 
+enum EFBXAnimationLengthImportType : int
+{
+	FBXALIT_ExportedTime, // FBX에 기록된 클립 길이
+	FBXALIT_AnimatedKey, // 키가 실제로 있는 구간
+	FBXALIT_SetRange, // AnimationRangeStart, AnimationRangeEnd로 지정한 프레임 구간
+};
+
 struct FFbxImportOptions
 {
 	bool bBakeStaticMeshes = true;
 	bool bCombineStaticMeshes = false;
 	bool bBakeSkeletalMeshes = true;
 	bool bCombineSkeletalMeshes = true;
+	bool bImportAnimations = true;
+	bool bResample = true; // 꺼지면 초당 30키로 고정한다.
+	int32 ResampleRate = 0; // 0이면 곡선에서 자동으로 구한다.
+	EFBXAnimationLengthImportType AnimationLengthImportType = FBXALIT_ExportedTime;
+	int32 AnimationRangeStart = 0;
+	int32 AnimationRangeEnd = 0;
 };
 
 struct FFbxMaterialData
@@ -43,6 +57,17 @@ struct FFbxMeshLODData
 {
 	FStaticMeshData MeshData;
 	FSkinWeightData SkinWeights;
+};
+
+// FBX 클립 하나를 본별 키로 바꾼 결과다. UAnimDataModel을 만들기 전 Cook 단계에서 쓴다.
+struct FFbxAnimationData
+{
+	FString Name;
+	FString SkeletonKey;
+	float FrameRate = 30.0f; // 초당 키 수
+	int32 NumberOfFrames = 0; // 키 사이 구간 수
+	int32 NumberOfKeys = 0;
+	TArray<FBoneAnimationTrack> Tracks;
 };
 
 // Cook 결과다. SDK 포인터/GPU 리소스는 포함하지 않는다. 한 항목이 한 .fbxbin이다.

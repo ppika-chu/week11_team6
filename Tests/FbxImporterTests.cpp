@@ -405,7 +405,7 @@ void TexturesAndMaterials()
 	Data = Cook(S.Save("constant-color.fbx"));
 	const auto& Constant = Type(Data, EFbxAssetType::Material)[0]->Material;
 	Check(Near(Constant.DiffuseOrFactor.X, .1f) && Near(Constant.DiffuseOrFactor.Y, .2f) &&
-		Near(Constant.DiffuseOrFactor.Z, .3f) && Near(Constant.DiffuseOrFactor.W, .75f), "No diffuse map preserves diffuse coefficient and opacity");
+		Near(Constant.DiffuseOrFactor.Z, .3f) && Near(Constant.DiffuseOrFactor.W, 1), "No diffuse map preserves diffuse coefficient; scalar transparency stays opaque");
 	M->Diffuse.ConnectSrcObject(T); M->NormalMap.ConnectSrcObject(T);
 	// 기존에 존재하지 않던 테스트 파일만 만들고 제거한다.
 	const fs::path Outside = "Build/fbx-test-external.bmp";
@@ -515,7 +515,7 @@ void Transparency()
 	};
 	const auto& Opaque = Find("OpaqueShared"); const auto& Constant = Find("Constant");
 	Check(Opaque.BlendState == EBlendState::Opaque && Near(Opaque.DiffuseOrFactor.W, 1), "Diffuse alpha alone does not enable AlphaBlend");
-	Check(Constant.BlendState == EBlendState::AlphaBlend && Near(Constant.DiffuseOrFactor.W, .75f) && Constant.DiffuseTexture == Opaque.DiffuseTexture, "Scalar opacity retains shared source texture");
+	Check(Constant.BlendState == EBlendState::Opaque && Near(Constant.DiffuseOrFactor.W, 1) && Constant.DiffuseTexture == Opaque.DiffuseTexture, "Scalar transparency stays opaque and retains shared source texture");
 	Check(Image(Opaque).Pixels[3] == 128 && Image(Opaque).Pixels[7] == 0, "Opacity baking never mutates shared source image");
 	const std::pair<const char*, std::array<uint8, 2>> Expected[]{
 		{"AlphaShared", {64, 192}}, {"RGBShared", {0, 255}}, {"OpacityOnly", {64, 192}},
@@ -599,7 +599,7 @@ void OpacityBakeFallback()
 			++Materials;
 			int I = 0; while (I < 4 && !Asset.SourceObject.starts_with("Material:Fallback" + std::to_string(I) + "[")) ++I;
 			Check(I < 4, "Fallback material identity"); const auto& M = Asset.Material;
-			Check(Near(M.DiffuseOrFactor.W, static_cast<float>(1 - Factors[I])) && M.BlendState == (I ? EBlendState::AlphaBlend : EBlendState::Opaque), "Fallback preserves scalar opacity and blend mode");
+			Check(Near(M.DiffuseOrFactor.W, 1) && M.BlendState == EBlendState::Opaque, "Skipped opacity map keeps material opaque");
 			Check(M.DiffuseTexture.empty() == (I == 3), "Fallback preserves presence of original Diffuse");
 			if (I == 0) SharedColor = M.DiffuseTexture;
 			if (I == 1) Check(M.DiffuseTexture == SharedColor, "Fallback retains shared Diffuse asset");
@@ -717,7 +717,7 @@ void TransparencyPublish(UMaterial* Base)
 		{
 			++Materials;
 			Check(Material->BlendState == Data.Material.BlendState, "Binary loader uses stored BlendState");
-			const bool Opaque = Data.SourceObject.starts_with("Material:OpaqueShared[");
+			const bool Opaque = Data.SourceObject.starts_with("Material:OpaqueShared[") || Data.SourceObject.starts_with("Material:Constant[");
 			Check(Material->BlendState == (Opaque ? EBlendState::Opaque : EBlendState::AlphaBlend), "Stored mode survives alpha=1 and source deletion");
 			Check(Material->DepthStencilState == (Opaque ? EDepthStencilState::Default : EDepthStencilState::ReadOnly), "Imported blend selects the existing depth state");
 			if (Data.SourceObject.starts_with("Material:AlphaShared["))
