@@ -46,7 +46,7 @@ void USkeletalMeshComponent::SetBoneRotation(int32 BoneIndex, const FRotator& Ro
 	const FTransform& Ref = SkeletalMesh->RefSkeleton.RefBonePose[BoneIndex];
 	const FMatrix Rotate = Rotation.Quaternion().ToFMatrix();
 	BoneSpaceTransforms[BoneIndex] = Ref;
-	BoneSpaceTransforms[BoneIndex].Rotation = MatrixToRotator(Rotate * Ref.Rotation.Quaternion().ToFMatrix());
+	BoneSpaceTransforms[BoneIndex].Rotation = MatrixToRotator(Rotate * Ref.Rotation.ToFMatrix());
 	RefreshBoneTransforms();
 }
 

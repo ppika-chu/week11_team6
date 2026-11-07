@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Math/Transform.h"
+
 inline void to_json(json& J, const FVector& V)
 {
 	J = json::array({ V.X, V.Y, V.Z });
@@ -37,6 +39,16 @@ inline void from_json(const json& J, FVector4& V)
 	{
 		V[i] = J[i].get<float>();
 	}
+}
+
+inline void to_json(json& J, const FQuat& Q)
+{
+	J = json::array({ Q.X, Q.Y, Q.Z, Q.W });
+}
+
+inline void from_json(const json& J, FQuat& Q)
+{
+	Q = FQuat(J.at(0).get<float>(), J.at(1).get<float>(), J.at(2).get<float>(), J.at(3).get<float>());
 }
 
 inline void to_json(json& J, const FTransform& T)

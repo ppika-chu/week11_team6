@@ -37,6 +37,12 @@ inline void operator<<(FStructuredArchiveSlot Slot, FRotator& R)
 	Record << SA_VALUE("Pitch", R.Pitch) << SA_VALUE("Yaw", R.Yaw) << SA_VALUE("Roll", R.Roll);
 }
 
+inline void operator<<(FStructuredArchiveSlot Slot, FQuat& Q)
+{
+	FStructuredArchiveRecord Record = Slot.EnterRecord();
+	Record << SA_VALUE("X", Q.X) << SA_VALUE("Y", Q.Y) << SA_VALUE("Z", Q.Z) << SA_VALUE("W", Q.W);
+}
+
 inline void operator<<(FStructuredArchiveSlot Slot, FTransform& T)
 {
 	FStructuredArchiveRecord Record = Slot.EnterRecord();

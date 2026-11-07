@@ -552,7 +552,7 @@ bool FImport::BuildRig(FRig& Rig)
 		const FMatrix Converted = EngineMatrix(Local, UnitScale);
 		if (!FiniteMatrix(Converted)) { Error = "Invalid bind transform: " + NodePath(Node); return false; }
 		const FPoseTransform Pose = EnginePose(Local, UnitScale);
-		FTransform Transform(Pose.Rotation.ToFRotator(), Pose.Location, Pose.Scale);
+		FTransform Transform(Pose.Rotation, Pose.Location, Pose.Scale);
 		const FMatrix Rebuilt = Transform.GetLocalMatrix();
 		bool Difference = false;
 		for (int R = 0; R < 4; ++R) for (int C = 0; C < 4; ++C)

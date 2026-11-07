@@ -11,7 +11,7 @@
 namespace
 {
 // 헤더나 직렬화 필드를 변경하면 올린다. 구버전은 에디터에서 명시적으로 재임포트한다.
-constexpr uint32 FbxBakeVersion = 4;
+constexpr uint32 FbxBakeVersion = 5;
 constexpr uint32 MaxElements = 1000000;
 constexpr uint32 MaxImageBytes = 512u * 1024u * 1024u;
 struct FFbxBakeHeader
@@ -76,7 +76,9 @@ void Skeleton(FBinary& Ar, FReferenceSkeleton& Ref)
 		Ar.String(Ref.RefBoneInfo[I].Name);
 		Ar.Pod(Ref.RefBoneInfo[I].ParentIndex);
 		auto& T = Ref.RefBonePose[I];
-		Ar.Pod(T.Location); Ar.Pod(T.Rotation.Pitch); Ar.Pod(T.Rotation.Yaw); Ar.Pod(T.Rotation.Roll); Ar.Pod(T.Scale);
+		Ar.Pod(T.Location);
+		Ar.Pod(T.Rotation.X); Ar.Pod(T.Rotation.Y); Ar.Pod(T.Rotation.Z); Ar.Pod(T.Rotation.W);
+		Ar.Pod(T.Scale);
 	}
 }
 

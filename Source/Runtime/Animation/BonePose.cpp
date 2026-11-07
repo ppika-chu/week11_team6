@@ -9,7 +9,7 @@ namespace
 
 FPoseTransform::FPoseTransform(const FTransform& InTransform)
 	: Location(InTransform.Location)
-	, Rotation(InTransform.Rotation.Quaternion())
+	, Rotation(InTransform.Rotation)
 	, Scale(InTransform.Scale)
 {
 }
