@@ -32,6 +32,19 @@ void UActorComponent::Serialize(FStructuredArchive::FRecord Record)
 	}
 }
 
+void UActorComponent::RecreateRenderState()
+{
+	if (!IsRenderStateCreated())
+	{
+		return;
+	}
+	DestroyRenderState();
+	if (ShouldCreateRenderState())
+	{
+		CreateRenderState();
+	}
+}
+
 void UActorComponent::RegisterComponent()
 {
 	AActor* MyOwner = GetOwner();

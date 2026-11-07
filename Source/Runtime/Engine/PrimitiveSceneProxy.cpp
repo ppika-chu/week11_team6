@@ -100,17 +100,17 @@ void FPrimitiveSceneProxy::UpdateRenderState()
 			Scene->MarkDirty(this);
 		}
 	}
-	if (!Mesh)
+	if (Mesh)
 	{
-		return;
+		std::vector<UMaterial*> Materials;
+		Materials.reserve(Mesh->MeshData.MaterialSlots.Num());
+		for (int32 Slot = 0; Slot < Mesh->MeshData.MaterialSlots.Num(); ++Slot)
+		{
+			Materials.push_back(Component->GetMaterial(Slot));
+		}
+		RenderState = Mesh->GetRenderState(Materials);
 	}
-	std::vector<UMaterial*> Materials;
-	Materials.reserve(Mesh->MeshData.MaterialSlots.Num());
-	for (uint32 Slot = 0; Slot < static_cast<uint32>(Mesh->MeshData.MaterialSlots.Num()); ++Slot)
-	{
-		Materials.push_back(Component->GetMaterial(Slot));
-	}
-	RenderState = Mesh->GetRenderState(Materials);
+	OnRenderStateUpdated();
 }
 
 void FPrimitiveSceneProxy::AddReferencedMaterials(TSet<UMaterial*>& OutMaterials) const

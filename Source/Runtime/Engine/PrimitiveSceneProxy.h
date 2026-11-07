@@ -66,6 +66,7 @@ public:
 protected:
 	// 파생 Proxy만 자신의 렌더 스냅샷을 갱신한다.
 	virtual void UpdateDynamicData();
+	virtual void OnRenderStateUpdated() {}
 	bool bRenderDynamicDataDirty = true;
 
 private:

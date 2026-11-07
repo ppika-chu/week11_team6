@@ -82,7 +82,7 @@ bool FStatOverlay::ExecCommand(const FString& CommandLine, FString& OutMessage)
 
 	if (Tokens.Num() < 2)
 	{
-		OutMessage = "Usage: stat <fps|memory|profile|shadow|decal|skin|all|none>";
+		OutMessage = "Usage: stat <fps|memory|profile|shadow|decal|skinning|all|none>";
 		return true;
 	}
 
@@ -123,13 +123,13 @@ bool FStatOverlay::ExecCommand(const FString& CommandLine, FString& OutMessage)
 	{
 		Target = EStatFlags::Decal;
 	}
-	else if (EqualsIgnoreCase(Arg, "skin"))
+	else if (EqualsIgnoreCase(Arg, "skinning"))
 	{
 		Target = EStatFlags::Skin;
 	}
 	if (Target == EStatFlags::None)
 	{
-		OutMessage = std::format("stat: unknown stat '{}'. Available: fps, memory, profile, shadow, decal, skin, all, none", Arg);
+		OutMessage = std::format("stat: unknown stat '{}'. Available: fps, memory, profile, shadow, decal, skinning, all, none", Arg);
 		return true;
 	}
 

@@ -1,6 +1,9 @@
 #include "EnginePCH.h"
 #include "SkinningSettings.h"
 
+#include "Components/SkinnedMeshComponent.h"
+#include "UObject/UObjectIterator.h"
+
 namespace
 {
 bool EqualsIgnoreCase(const FString& A, const char* B)
@@ -57,15 +60,15 @@ bool FSkinningSettings::ExecCommand(const FString& CommandLine, FString& OutMess
 	{
 		if (Tokens.Num() < 2)
 		{
-			SkinningMode = SkinningMode == ESkinningMode::GPU ? ESkinningMode::CPU : ESkinningMode::GPU;
+			SetSkinningMode(SkinningMode == ESkinningMode::GPU ? ESkinningMode::CPU : ESkinningMode::GPU);
 		}
 		else if (EqualsIgnoreCase(Tokens[1], "gpu"))
 		{
-			SkinningMode = ESkinningMode::GPU;
+			SetSkinningMode(ESkinningMode::GPU);
 		}
 		else if (EqualsIgnoreCase(Tokens[1], "cpu"))
 		{
-			SkinningMode = ESkinningMode::CPU;
+			SetSkinningMode(ESkinningMode::CPU);
 		}
 		else
 		{
@@ -75,4 +78,18 @@ bool FSkinningSettings::ExecCommand(const FString& CommandLine, FString& OutMess
 	}
 	
 	return false;
+}
+
+void FSkinningSettings::SetSkinningMode(ESkinningMode NewMode)
+{
+	if (SkinningMode == NewMode)
+	{
+		return;
+	}
+
+	SkinningMode = NewMode;
+	for (TObjectIterator<USkinnedMeshComponent> It; It; ++It)
+	{
+		It->RecreateRenderState();
+	}
 }

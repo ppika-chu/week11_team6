@@ -2,21 +2,10 @@
 #include "SkinnedMeshComponent.h"
 #include "Asset/AssetManager.h"
 #include "Core/Stats/LightweightStats.h"
-#include "Core/Stats/SkinningStats.h"
-#include "Render/RenderCommand.h"
 #include "Render/SkeletalMesh.h"
 #include "Render/Material.h"
 #include "Engine/PrimitiveSceneProxy.h"
 #include "Render/SkinningSettings.h"
-
-USkinnedMeshComponent::USkinnedMeshComponent()
-{
-}
-
-USkinnedMeshComponent::~USkinnedMeshComponent()
-{
-	DestroyRenderMesh();
-}
 
 void USkinnedMeshComponent::BeginPlay()
 {
@@ -34,7 +23,7 @@ void USkinnedMeshComponent::SetSkeletalMesh(USkeletalMesh* InSkeletalMesh)
 	SkeletalMesh = InSkeletalMesh;
 	InitPoseFromMesh();
 	ClearOverrideMaterials();
-	MarkRenderStateDirty();
+	RecreateRenderState();
 	OnTransformDirty();
 }
 
@@ -74,6 +63,26 @@ UMaterial* USkinnedMeshComponent::GetDefaultMaterial(int32 SlotIndex) const
 	return UAssetManager::GetAssetByPath<UMaterial>("DefaultMaterial");
 }
 
+FPrimitiveSceneProxy* USkinnedMeshComponent::CreateSceneProxy()
+{
+	return new FSkeletalMeshSceneProxy(this, MeshObject.get());
+}
+
+void USkinnedMeshComponent::CreateRenderState()
+{
+	if (SkeletalMesh)
+	{
+		MeshObject = FSkeletalMeshObject::Create(*SkeletalMesh, FSkinningSettings::GetSkinningMode());
+	}
+	Super::CreateRenderState();
+}
+
+void USkinnedMeshComponent::DestroyRenderState()
+{
+	Super::DestroyRenderState();
+	MeshObject.reset();
+}
+
 int32 USkinnedMeshComponent::FindBoneIndex(const FString& BoneName) const
 {
 	return SkeletalMesh ? SkeletalMesh->RefSkeleton.FindBoneIndex(BoneName) : -1;
@@ -104,7 +113,6 @@ void USkinnedMeshComponent::RefreshBoneTransforms()
 void USkinnedMeshComponent::InitPoseFromMesh()
 {
 	ComponentSpaceTransforms.Reset();
-	DestroyRenderMesh();
 	PoseSourceMesh = SkeletalMesh;
 
 	if (!SkeletalMesh)
@@ -112,10 +120,7 @@ void USkinnedMeshComponent::InitPoseFromMesh()
 		return;
 	}
 
-	const int32 BoneCount = SkeletalMesh->RefSkeleton.RefBonePose.Num();
-	ComponentSpaceTransforms.SetNum(BoneCount);
-
-	CreateRenderMesh();
+	ComponentSpaceTransforms.SetNum(SkeletalMesh->RefSkeleton.RefBonePose.Num());
 	RefreshBoneTransforms();
 }
 
@@ -124,7 +129,7 @@ void USkinnedMeshComponent::EnsurePoseInitialized()
 	if (SkeletalMesh != PoseSourceMesh)
 	{
 		InitPoseFromMesh();
-		MarkRenderStateDirty();
+		RecreateRenderState();
 	}
 }
 
@@ -156,52 +161,6 @@ void USkinnedMeshComponent::FillComponentSpaceTransforms(const TArray<FTransform
 void USkinnedMeshComponent::FinalizeBoneTransform()
 {
 	MarkRenderDynamicDataDirty();
-}
-
-void USkinnedMeshComponent::CreateRenderMesh()
-{
-	DestroyRenderMesh();
-	if (!SkeletalMesh)
-	{
-		return;
-	}
-
-	// LOD0만 사용한다
-	const FStaticMeshData& Source = SkeletalMesh->GetMeshData();
-	const uint32 VertexCount = static_cast<uint32>(Source.Vertices.Num());
-	const uint32 IndexCount = static_cast<uint32>(Source.Indices.Num());
-	if (VertexCount == 0 || IndexCount == 0)
-	{
-		return;
-	}
-
-	UStaticMesh* Mesh = NewObject<UStaticMesh>();
-	Mesh->bInternalOnly = true;
-
-	Mesh->MeshData = Source;
-
-	Mesh->VertexBuffer = RenderCommand::CreateDynamicVertexBuffer(sizeof(FVertex) * VertexCount, sizeof(FVertex));
-	Mesh->IndexBuffer = RenderCommand::CreateStaticIndexBuffer(Source.Indices.GetData(), IndexCount);
-	if (!Mesh->VertexBuffer || !Mesh->IndexBuffer)
-	{
-		HTR_LOG(Error, "[Skel] Failed to create skinned render buffers");
-		delete Mesh;
-		return;
-	}
-
-	for (int32 Slot = 0; Slot < GetNumMaterials(); ++Slot)
-	{
-		Mesh->Materials.Add(GetDefaultMaterial(Slot));
-	}
-
-	Mesh->RebuildRenderData();
-	RenderMesh = Mesh;
-}
-
-void USkinnedMeshComponent::DestroyRenderMesh()
-{
-	delete RenderMesh;
-	RenderMesh = nullptr;
 }
 
 void USkinnedMeshComponent::SubmitToRenderQueue(FRenderQueue& Queue)

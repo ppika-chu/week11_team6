@@ -1,10 +1,8 @@
 #pragma once
 
 #include "PrimitiveSceneProxy.h"
-#include "Render/Buffer.h"
-#include "Render/SkinningSettings.h"
-#include "Render/VertexFactory.h"
 
+class FSkeletalMeshObject;
 struct FVertex;
 class USkeletalMesh;
 class USkinnedMeshComponent;
@@ -12,34 +10,21 @@ class USkinnedMeshComponent;
 class FSkeletalMeshSceneProxy : public FPrimitiveSceneProxy
 {
 public:
-	explicit FSkeletalMeshSceneProxy(USkinnedMeshComponent* InComponent);
+	explicit FSkeletalMeshSceneProxy(USkinnedMeshComponent* InComponent, FSkeletalMeshObject* InMeshObject);
 
 	bool SupportsStaticFastPath() const override { return false; }
 	bool GatherDynamicRenderPackets(FRenderQueue& RenderQueue, FRenderQueue* IconQueue,
 		const FVector& CameraLocation, FBillboardMatrixBuilder BuildBillboardMatrix,
 		const void* ViewContext, TArray<int32>& SortedParticleIndices,
 		TArray<float>& ParticleDistancesSquared) const override;
-
 	void AddMeshPackets(FRenderQueue& Queue) const;
+	void AddReferencedMaterials(TSet<UMaterial*>& OutMaterials) const override;
 
 protected:
 	void UpdateDynamicData() override;
+	void OnRenderStateUpdated() override;
 
 private:
-	bool UpdateRefToLocalMatrices(const USkinnedMeshComponent& Component, const USkeletalMesh& Mesh);
-	void UpdateGPUSkin(const USkeletalMesh& Mesh);
-	void UpdateCPUSkin(const USkeletalMesh& Mesh);
-
-	TArray<FMatrix> ReferenceToLocal;
-	ESkinningMode LastSkinningMode = ESkinningMode::GPU;
-	bool bGPUSkinning = false;
-
-	// GPU 스키닝
-	TUniquePtr<FStructuredBuffer> BoneBuffer;
-	FVertexFactory GPUSkinVertexFactory;
-
-	// CPU 스키닝
-	TArray<FVertex> SkinnedVertices;
-	TUniquePtr<FVertexBuffer> CPUSkinVertexBuffer;
-	FVertexFactory CPUSkinVertexFactory;
+	FSkeletalMeshObject* MeshObject = nullptr;
+	TArray<FCachedMeshSection> Sections;
 };
