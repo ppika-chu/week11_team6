@@ -65,7 +65,8 @@ bool FParticleSceneProxy::GatherDynamicRenderPackets(FRenderQueue& RenderQueue, 
 	{
 		const FParticle& Particle = Particles[Index];
 		FRenderPacket Packet;
-		Packet.Mesh = QuadMesh;
+		Packet.VertexFactory = &QuadMesh->GetVertexFactory(0);
+		Packet.IndexBuffer = QuadMesh->GetIndexBuffer(0);
 		Packet.Material = Material;
 		Packet.Model = RenderQueue.StoreWorldMatrix(BuildBillboardMatrix(
 			Particle.Location, Particle.Scale, Particle.Scale, ViewContext));

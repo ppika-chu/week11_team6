@@ -171,6 +171,7 @@ public:
 					else Mesh->AdditionalLODs.Add(std::move(Resource));
 				}
 				if (!Mesh->CalculateInvRefMatrices(Error)) return nullptr;
+				Mesh->InitResources();
 			}
 		}
 		Loading.erase(Key);

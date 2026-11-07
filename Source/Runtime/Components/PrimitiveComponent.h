@@ -101,6 +101,7 @@ public:
 	// Proxy의 구체 타입만 선택하며 Scene이 등록과 삭제를 담당한다.
 	virtual FPrimitiveSceneProxy* CreateSceneProxy();
 
+	void MarkRenderDynamicDataDirty();
 	void MarkRenderStateDirty();
 
 	virtual void OnTransformDirty() override;

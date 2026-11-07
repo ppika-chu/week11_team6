@@ -4,6 +4,7 @@
 #include "RenderCommand.h"
 
 #include "RenderUtil.h"
+#include "VertexFactory.h"
 
 namespace
 {
@@ -17,8 +18,21 @@ FString MakeShaderKey(const FString& Path, const D3D_SHADER_MACRO* Macros)
 	}
 	return Key;
 }
-}
 
+struct FLightingVariant
+{
+	EViewMode Mode;
+	const char* Define;
+};
+
+static constexpr FLightingVariant LightingVariants[] = {
+	{ EViewMode::Unlit, "LIGHTING_MODEL_UNLIT" },
+	{ EViewMode::Lit_Gouraud, "LIGHTING_MODEL_GOURAUD" },
+	{ EViewMode::Lit_Lambert, "LIGHTING_MODEL_LAMBERT" },
+	{ EViewMode::Lit_BlinnPhong, "LIGHTING_MODEL_BLINN_PHONG" },
+	{ EViewMode::WorldNormal, "WORLD_NORMAL" },
+};
+}
 
 void FRenderResourceManager::ScanShaders(const fs::path& ShaderRoot)
 {
@@ -55,23 +69,6 @@ void FRenderResourceManager::LoadUberLit(const fs::path& ShaderRoot)
 {
 	const FString Path = (ShaderRoot / "UberLit.hlsl").generic_string();
 
-	// 같은 UberLit.hlsl을 매크로 조합별로 따로 컴파일한다.
-	// 캐시 키 / CSO 파일명은 "경로_매크로이름" 형태로 구분된다.
-	// 매크로 없는 기본 키("Resources/Shader/UberLit.hlsl")는 기존 머티리얼이 쓰므로 Lambert로 남겨 둔다. (셰이더 쪽 기본값)
-
-	static const D3D_SHADER_MACRO Unlit[] = { { "LIGHTING_MODEL_UNLIT", "1" }, { nullptr, nullptr } };
-	static const D3D_SHADER_MACRO Gouraud[] = { { "LIGHTING_MODEL_GOURAUD", "1" }, { nullptr, nullptr } };
-	static const D3D_SHADER_MACRO Lambert[] = { { "LIGHTING_MODEL_LAMBERT", "1" }, { nullptr, nullptr } };
-	static const D3D_SHADER_MACRO BlinnPhong[] = { { "LIGHTING_MODEL_BLINN_PHONG", "1" }, { nullptr, nullptr } };
-	static const D3D_SHADER_MACRO WorldNormal[] = { { "WORLD_NORMAL", "1" }, { nullptr, nullptr } };
-
-	LoadOrCompileShader(Path); // 기본 (Lambert)
-	LoadOrCompileShader(Path, Unlit);
-	LoadOrCompileShader(Path, Gouraud);
-	LoadOrCompileShader(Path, Lambert);
-	LoadOrCompileShader(Path, BlinnPhong);
-	LoadOrCompileShader(Path, WorldNormal);
-
 	// 뷰모드 -> 변형 테이블. 컴파일에 실패한 키는 nullptr로 남는다(GetShaderProgram의 폴백을 쓰지 않으려고 맵을 직접 찾는다).
 	auto FindProgram = [this](const FString& Key) -> FShaderProgram*
 	{
@@ -79,26 +76,42 @@ void FRenderResourceManager::LoadUberLit(const fs::path& ShaderRoot)
 		return Found ? Found->get() : nullptr;
 	};
 
+	LoadOrCompileShader(Path); // 기본 (Lambert)
 	UberLitDefault = FindProgram(MakeShaderKey(Path, nullptr));
-	UberLitPrograms[static_cast<int32>(EViewMode::Lit_Gouraud)] = FindProgram(MakeShaderKey(Path, Gouraud));
-	UberLitPrograms[static_cast<int32>(EViewMode::Lit_Lambert)] = FindProgram(MakeShaderKey(Path, Lambert));
-	UberLitPrograms[static_cast<int32>(EViewMode::Lit_BlinnPhong)] = FindProgram(MakeShaderKey(Path, BlinnPhong));
-	UberLitPrograms[static_cast<int32>(EViewMode::Lit)] = UberLitPrograms[static_cast<int32>(EViewMode::Lit_BlinnPhong)];
-	UberLitPrograms[static_cast<int32>(EViewMode::Unlit)] = FindProgram(MakeShaderKey(Path, Unlit));
-	UberLitPrograms[static_cast<int32>(EViewMode::WorldNormal)] = FindProgram(MakeShaderKey(Path, WorldNormal));
-	// Wireframe은 선 색만 보이면 되고, Scene Depth는 깊이만 쓰므로 둘 다 조명 없는 Unlit을 쓴다.
-	UberLitPrograms[static_cast<int32>(EViewMode::Wireframe)] = UberLitPrograms[static_cast<int32>(EViewMode::Unlit)];
-	UberLitPrograms[static_cast<int32>(EViewMode::SceneDepth)] = UberLitPrograms[static_cast<int32>(EViewMode::Unlit)];
+
+	for (const FVertexFactoryTypeInfo& VF : GVertexFactoryTypes)
+	{
+		FShaderProgram** Row = UberLitPrograms[static_cast<int32>(VF.Type)];
+		for (const FLightingVariant& L : LightingVariants)
+		{
+			D3D_SHADER_MACRO Macros[3]{};
+			int32 N = 0;
+			Macros[N++] = { L.Define, "1" };
+			if (VF.Define)
+			{
+				Macros[N++] = { VF.Define, "1" };
+			}
+
+			LoadOrCompileShader(Path, Macros);
+			Row[static_cast<int32>(L.Mode)] = FindProgram(MakeShaderKey(Path, Macros));
+		}
+
+		Row[static_cast<int32>(EViewMode::Lit)] = Row[static_cast<int32>(EViewMode::Lit_BlinnPhong)];
+		Row[static_cast<int32>(EViewMode::Wireframe)] = Row[static_cast<int32>(EViewMode::Unlit)];
+		Row[static_cast<int32>(EViewMode::SceneDepth)] = Row[static_cast<int32>(EViewMode::Unlit)];
+	}
 }
 
-FShaderProgram* FRenderResourceManager::GetUberLitProgram(EViewMode Mode)
+FShaderProgram* FRenderResourceManager::GetUberLitProgram(EVertexFactoryType VFType, EViewMode Mode)
 {
-	const int32 Index = static_cast<int32>(Mode);
-	if (Index < 0 || Index >= static_cast<int32>(EViewMode::Count))
+	const int32 VFIndex = static_cast<int32>(VFType);
+	const int32 ViewModeIndex = static_cast<int32>(Mode);
+	if (VFIndex < 0 || VFIndex >= static_cast<int32>(EVertexFactoryType::Count) ||
+		ViewModeIndex < 0 || ViewModeIndex >= static_cast<int32>(EViewMode::Count))
 	{
 		return nullptr;
 	}
-	return Get().UberLitPrograms[Index];
+	return Get().UberLitPrograms[VFIndex][ViewModeIndex];
 }
 
 bool FRenderResourceManager::IsUberLitProgram(const FShaderProgram* Program)
@@ -113,11 +126,14 @@ bool FRenderResourceManager::IsUberLitProgram(const FShaderProgram* Program)
 	{
 		return true;
 	}
-	for (const FShaderProgram* Variant : Self.UberLitPrograms)
+	for (const auto& Row : Self.UberLitPrograms)
 	{
-		if (Program == Variant)
+		for (const FShaderProgram* Variant : Row)
 		{
-			return true;
+			if (Program == Variant)
+			{
+				return true;
+			}
 		}
 	}
 	return false;
@@ -130,9 +146,12 @@ void FRenderResourceManager::Shutdown()
 	Get().ComputeShaderMap.Empty();
 	Get().ShaderProgramMap.Empty();
 	Get().UberLitDefault = nullptr;
-	for (FShaderProgram*& Program : Get().UberLitPrograms)
+	for (auto& Row : Get().UberLitPrograms)
 	{
-		Program = nullptr;
+		for (FShaderProgram*& Variant : Row)
+		{
+			Variant = nullptr;
+		}
 	}
 }
 
@@ -179,6 +198,21 @@ FShaderProgram* FRenderResourceManager::FindOrLoadShaderProgram(const FString& I
 
 	Manager.FailedShaderPaths.Add(Key);
 	return nullptr;
+}
+
+FShaderProgram* FRenderResourceManager::FindOrLoadShaderProgram(const FString& Path, const char* Define, EVertexFactoryType VertexFactoryType)
+{
+	D3D_SHADER_MACRO Macros[3]{};
+	int32 N = 0;
+	if (Define)
+	{
+		Macros[N++] = { Define, "1" };
+	}
+	if (const char* VertexFactoryDefine = GVertexFactoryTypes[static_cast<int32>(VertexFactoryType)].Define)
+	{
+		Macros[N++] = { VertexFactoryDefine, "1" };
+	}
+	return FindOrLoadShaderProgram(Path, N ? Macros : nullptr);
 }
 
 FComputeShader* FRenderResourceManager::GetComputeShader(const FString& InPath)

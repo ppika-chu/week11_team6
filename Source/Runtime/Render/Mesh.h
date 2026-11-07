@@ -7,6 +7,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include "VertexFactory.h"
+
 class FPrimitiveSceneProxy;
 
 struct FStaticMeshLODResource
@@ -67,6 +69,7 @@ public:
 
 	void RebuildRenderData();
 	const FLODSphere& GetLocalLODSphere() const { return LocalLODSphere; }
+	const FVertexFactory& GetVertexFactory(uint32 LODIndex) const { return VertexFactories[std::min(LODIndex, static_cast<uint32>(3))]; }
 	const FBox& GetRenderBounds() const { return RenderBounds; }
 	TSharedPtr<const FMeshRenderState> GetRenderState(const std::vector<UMaterial*>& Materials);
 	void RegisterProxy(FPrimitiveSceneProxy* Proxy);
@@ -81,6 +84,7 @@ private:
 		size_t operator()(const std::vector<UMaterial*>& Slots) const;
 	};
 	FLODSphere LocalLODSphere;
+	FVertexFactory VertexFactories[4]{};
 	FBox RenderBounds;
 	std::unordered_map<std::vector<UMaterial*>, TWeakPtr<const FMeshRenderState>, FMaterialSlotsHash> RenderStates;
 	TArray<FPrimitiveSceneProxy*> RenderProxies;

@@ -51,6 +51,8 @@ public:
 	using Super::Serialize;
 	virtual void Serialize(FStructuredArchive::FRecord Record);
 
+	void RecreateRenderState();
+
 	void RegisterComponent();
 	void RegisterComponentWithWorld(UWorld* InWorld);
 	void UnregisterComponent();

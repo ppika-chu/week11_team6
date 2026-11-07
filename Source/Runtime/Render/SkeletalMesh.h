@@ -5,6 +5,8 @@
 #include "Render/StaticMeshData.h"
 #include <array>
 
+#include "Buffer.h"
+
 class UMaterial;
 class USkeleton;
 
@@ -35,6 +37,11 @@ public:
 	USkeleton* Skeleton = nullptr;
 	FReferenceSkeleton RefSkeleton;
 	TArray<FMatrix> RefBasesInvMatrix;
+	TUniquePtr<FVertexBuffer> VertexBuffer; // 바인드 포즈, Static
+	TUniquePtr<FIndexBuffer> IndexBuffer; // Static
+	TUniquePtr<FStructuredBuffer> SkinWeightBuffer; // FGPUSkinWeight[]
+
+	void InitResources();
 
 	uint32 GetLODCount() const { return 1u + static_cast<uint32>(AdditionalLODs.Num()); }
 	const FStaticMeshData& GetMeshData(uint32 LOD = 0) const { return LOD == 0 ? MeshData : AdditionalLODs[LOD - 1].Data; }
