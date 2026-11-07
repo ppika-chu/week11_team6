@@ -6,7 +6,7 @@
 
 void FSceneTransitionManager::RequestLoadScene(UWorld* TargetWorld, const FString& ScenePath)
 {
-	if (!TargetWorld || TargetWorld->GetWorldType() == EWorldType::Editor || ScenePath.empty())
+	if (!TargetWorld || TargetWorld->GetWorldType() == EWorldType::Editor || TargetWorld->GetWorldType() == EWorldType::EditorPreview || ScenePath.empty())
 	{
 		HTR_LOG(Warning, "[Scene] Ignored invalid scene transition request");
 		return;
@@ -39,7 +39,7 @@ bool FSceneTransitionManager::ProcessPendingTransition()
 	PendingTransition.Reset();
 
 	UWorld* World = Request.TargetWorld;
-	if (!World || World->GetWorldType() == EWorldType::Editor)
+	if (!World || World->GetWorldType() == EWorldType::Editor || World->GetWorldType() == EWorldType::EditorPreview)
 	{
 		return false;
 	}

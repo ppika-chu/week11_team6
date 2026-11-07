@@ -67,6 +67,9 @@ public:
 	static bool ReorientStaticMesh(UStaticMesh& Mesh, const std::function<FVector(const FVector&)>& Rotate);
 
 	// 로드된 OBJ 스태틱 메시(키가 .obj로 끝나는 것)마다 부른다. 기본 도형·기즈모 메시는 제외된다.
+	// 등록된 에셋마다 부른다. 재임포트로 교체된 옛 객체는 건너뛴다.
+	static void ForEachAsset(const std::function<void(URenderAsset& Asset)>& Func);
+
 	static void ForEachObjStaticMesh(const std::function<void(const FString& Key, UStaticMesh& Mesh)>& Func);
 
 private:

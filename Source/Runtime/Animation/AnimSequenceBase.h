@@ -1,6 +1,7 @@
 #pragma once
 
-#include "AnimationAsset.h"
+#include "Animation/AnimationAsset.h"
+#include "Animation/AnimDataModel.h"
 
 struct FAnimPose;
 
@@ -11,13 +12,25 @@ enum ETypeAdvanceAnim : int
 	ETAA_Looped
 };
 
-// TODO: UAnimDataModel 연동 예정.
 class UAnimSequenceBase : public UAnimationAsset
 {
 	DECLARE_CLASS(UAnimSequenceBase, UAnimationAsset)
 public:
-	float RateScale = 1.0f;
+	virtual ~UAnimSequenceBase() override
+	{
+		// 엔진 종료 때 전역 정리가 DataModel을 먼저 지울 수 있다.
+		if (DataModel && FindLiveObjectByAddress(DataModel))
+		{
+			delete DataModel;
+		}
+	}
 
-	// TODO: Pose 추출 구현 예정. 대상 Skeleton 순서의 전체 Local Pose를 채우며 시간은 전진시키지 않는다.
+	virtual float GetPlayLength() const override { return DataModel ? DataModel->GetPlayLength() : 0.0f; }
+
+	// 대상 Skeleton 순서의 전체 Local Pose를 채우며 시간은 전진시키지 않는다.
 	virtual void GetAnimationPose(FAnimPose& OutPose, const FAnimExtractContext& ExtractionContext) const = 0;
+
+	float RateScale = 1.0f;
+	TArray<FAnimNotifyEvent> Notifies;
+	UAnimDataModel* DataModel = nullptr;
 };

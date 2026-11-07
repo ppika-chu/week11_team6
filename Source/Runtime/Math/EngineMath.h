@@ -33,6 +33,12 @@ static inline T Clamp(T InValue, T InMin, T InMax)
 	return Max(InMin, Min(InValue, InMax));
 }
 
+template<typename T>
+static inline T Lerp(const T& A, const T& B, float Alpha)
+{
+	return A + (B - A) * Alpha;
+}
+
 static inline bool IsNearlyZero(float Value, float ErrorTolerance = 1e-20f)
 {
 	return std::abs(Value) <= ErrorTolerance;

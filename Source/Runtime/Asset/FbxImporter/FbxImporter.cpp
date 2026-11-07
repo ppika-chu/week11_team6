@@ -2,6 +2,7 @@
 #include "FbxImporter.h"
 #include "FbxAssetBake.h"
 #include "FbxPath.h"
+#include "Math/MathUtility.h"
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -98,6 +99,19 @@ FbxAMatrix Geometry(FbxNode* Node)
 }
 
 FVector Reflect(const FbxVector4& V) { return FVector(static_cast<float>(V[0]), static_cast<float>(-V[1]), static_cast<float>(V[2])); }
+
+// 부모 기준 FBX 행렬을 엔진 좌표계의 위치, 회전, 크기로 바꾼다.
+FTransform EnginePose(const FbxAMatrix& Local, double UnitScale)
+{
+	const FbxQuaternion Q = Local.GetQ();
+	const FbxVector4 S = Local.GetS();
+
+	FTransform Pose;
+	Pose.Location = Reflect(Local.GetT()) * static_cast<float>(UnitScale);
+	Pose.Rotation = FQuat(static_cast<float>(Q[0]), static_cast<float>(-Q[1]), static_cast<float>(Q[2]), static_cast<float>(-Q[3])).Normalized();
+	Pose.Scale = FVector(static_cast<float>(S[0]), static_cast<float>(S[1]), static_cast<float>(S[2]));
+	return Pose;
+}
 
 FMatrix EngineMatrix(const FbxAMatrix& M, double UnitScale, bool bEngineInput = true)
 {
@@ -245,6 +259,8 @@ struct FRig
 	FReferenceSkeleton Reference;
 	FbxAMatrix ParentBind;
 	FString Key;
+	bool bUseTimeZeroAsBindPose = false;
+	TArray<FMatrix> TimeZeroRebindMatrices; // 바인드 포즈의 정점을 0초 자세로 옮기는 본별 행렬
 };
 
 struct FOutputGroup
@@ -272,6 +288,79 @@ struct FCornerHash
 	}
 };
 
+constexpr double DEFAULT_SAMPLERATE = 30.0;
+constexpr double MINIMUM_ANIMATION_LENGTH = 1.0 / DEFAULT_SAMPLERATE;
+
+// FBX 파일 프레임레이트를 초당 키 수로 쓴다. (UE UInterchangeGenericAnimationPipeline)
+double GetBoneAnimationSampleRate(double FrameRate)
+{
+	return FrameRate > 0.0 ? FrameRate : DEFAULT_SAMPLERATE;
+}
+
+// 이 클립에서 노드의 위치, 회전, 크기 곡선이 하나라도 있는지 본다. (UE FFbxAnimation GetFbxTransformCurves)
+bool IsNodeAnimated(FbxNode* Node, FbxAnimStack* Stack)
+{
+	FbxPropertyT<FbxDouble3>* Properties[]{ &Node->LclTranslation, &Node->LclRotation, &Node->LclScaling };
+	const char* Components[]{ FBXSDK_CURVENODE_COMPONENT_X, FBXSDK_CURVENODE_COMPONENT_Y, FBXSDK_CURVENODE_COMPONENT_Z };
+	for (int32 LayerIndex = 0; LayerIndex < Stack->GetMemberCount<FbxAnimLayer>(); ++LayerIndex)
+		for (auto* Property : Properties) for (const char* Component : Components)
+			if (Property->GetCurve(Stack->GetMember<FbxAnimLayer>(LayerIndex), Component, false)) return true;
+	return false;
+}
+
+// 회전 곡선을 이어지는 값으로 고친다. 예: 359도 다음 1도 → 359도 다음 361도. (UE ApplyUnroll)
+void ApplyUnroll(FbxNode* Node, FbxAnimLayer* Layer, FbxAnimCurveFilterUnroll* UnrollFilter)
+{
+	if (!Node || !Layer || !UnrollFilter) return;
+
+	if (FbxAnimCurveNode* CurveNode = Node->LclRotation.GetCurveNode(Layer))
+	{
+		FbxAnimCurve* Curves[3]{ CurveNode->GetCurve(0), CurveNode->GetCurve(1), CurveNode->GetCurve(2) };
+		EFbxRotationOrder RotationOrder = eEulerXYZ;
+		Node->GetRotationOrder(FbxNode::eSourcePivot, RotationOrder);
+		UnrollFilter->SetRotationOrder(static_cast<FbxEuler::EOrder>(RotationOrder));
+		UnrollFilter->Apply(Curves, 3);
+	}
+
+	for (int32 I = 0; I < Node->GetChildCount(); ++I) ApplyUnroll(Node->GetChild(I), Layer, UnrollFilter);
+}
+
+// DeepConvertScene은 0번 층만 변환하므로 변환 전에 층을 하나로 합친다. (UE 이전 임포터 MergeAllLayerAnimation)
+void MergeAllLayerAnimation(FbxScene* Scene, FbxAnimStack* Stack, int32 ResampleRate)
+{
+	FbxTime FramePeriod;
+	FramePeriod.SetSecondDouble(1.0 / ResampleRate);
+
+	const FbxTimeSpan Span = Stack->GetLocalTimeSpan();
+	Stack->BakeLayers(Scene->GetAnimationEvaluator(), Span.GetStart(), Span.GetStop(), FramePeriod);
+
+	FbxAnimCurveFilterUnroll UnrollFilter;
+	UnrollFilter.Reset();
+	ApplyUnroll(Scene->GetRootNode(), Stack->GetMember<FbxAnimLayer>(0), &UnrollFilter);
+}
+
+// 값이 끝까지 같은 키 배열을 길이 1로 줄인다. (UE CompressRawAnimSequenceTrack)
+void CompressRawAnimSequenceTrack(FRawAnimSequenceTrack& Track, float MaxPosDiff = 0.0001f, float MaxAngleDiff = 0.0003f, float MaxScaleDiff = 0.0001f)
+{
+	const auto IsConstant = [](const TArray<FVector>& Keys, float MaxDiff)
+	{
+		for (int32 I = 1; I < Keys.Num(); ++I)
+			if ((Keys[0] - Keys[I]).SizeSquared() > MaxDiff * MaxDiff) return false;
+		return true;
+	};
+	if (IsConstant(Track.PosKeys, MaxPosDiff)) Track.PosKeys.SetNum(1);
+	if (IsConstant(Track.ScaleKeys, MaxScaleDiff)) Track.ScaleKeys.SetNum(1);
+
+	bool bConstantRotation = true;
+	for (int32 I = 1; I < Track.RotKeys.Num() && bConstantRotation; ++I)
+	{
+		const float Cos = std::abs(Track.RotKeys[0] | Track.RotKeys[I]);
+		const float Error = Cos < 0.9999999f ? std::acos(Cos) / PI : 0.0f; // UE FQuat::Error
+		bConstantRotation = Error <= MaxAngleDiff;
+	}
+	if (bConstantRotation) Track.RotKeys.SetNum(1);
+}
+
 class FImport
 {
 public:
@@ -281,6 +370,7 @@ public:
 	fs::path Source;
 	fs::path Destination;
 	double UnitScale = 1;
+	double FrameRate = 0;
 	bool bBlender = false;
 	TArray<FFbxAssetData>& Output;
 	TArray<FString>& Warnings;
@@ -296,6 +386,7 @@ public:
 	std::unordered_map<FString, FString> FileOwners;
 	std::unordered_set<FString> Warned;
 	std::vector<FbxPose*> Poses;
+	std::vector<FFbxAssetData> Animations;
 
 	FImport(FbxScene* S, const FFbxImportOptions& O, const FString& K, const fs::path& P, const fs::path& D,
 		TArray<FFbxAssetData>& Out, TArray<FString>& W, FString& E)
@@ -313,7 +404,9 @@ public:
 	bool PoseMatrix(FbxPose* Pose, FbxNode* Node, FbxAMatrix& Out);
 	FbxAMatrix Bind(FbxNode* Node);
 	FbxAMatrix MeshBind(const FMeshItem& Item);
+	bool IsValidBindPose(FbxNode* RootJoint);
 	bool BuildRig(FRig& Rig);
+	void RebindToTimeZero(const FRig& Rig, FFbxMeshLODData& LOD);
 	FString Material(FbxSurfaceMaterial* SourceMaterial);
 	FString Texture(FbxProperty Property);
 	FString OpacityTexture(FbxSurfaceMaterial* Material, const FString& DiffuseKey, const FString& OpacityKey, const FString& Identity, ESamplerState Sampler);
@@ -321,6 +414,8 @@ public:
 	bool CookMesh(const FOutputGroup& Group);
 	bool AppendMesh(const FMeshItem& Item, FFbxAssetData& Asset, int LOD, std::map<uint32, std::vector<uint32>>& Sections);
 	void LODThresholds(const FOutputGroup& Group, FFbxAssetData& Asset);
+	bool GetAnimationRange(FbxNode* RootNode, FbxAnimStack* Stack, double SampleRate, double& OutStart, double& OutStop);
+	void CookAnimations(const FRig& Rig);
 	bool Run();
 };
 
@@ -522,26 +617,74 @@ FbxAMatrix FImport::MeshBind(const FMeshItem& Item)
 	return Bind(Item.Node);
 }
 
+// FBX SDK 검사를 통과하는 노드가 하나라도 있으면 유효하다. (UE FFbxScene::IsValidBindPose)
+bool FImport::IsValidBindPose(FbxNode* RootJoint)
+{
+	int PoseCount = Scene->GetPoseCount();
+	if (PoseCount == 0)
+	{
+		Scene->GetFbxManager()->CreateMissingBindPoses(Scene);
+		PoseCount = Scene->GetPoseCount();
+	}
+
+	std::vector<FbxNode*> Nodes;
+	std::function<void(FbxNode*)> Collect = [&](FbxNode* Node)
+	{
+		Nodes.push_back(Node);
+		for (int C = 0; C < Node->GetChildCount(); ++C) Collect(Node->GetChild(C));
+	};
+	Collect(RootJoint);
+
+	for (int PoseIndex = 0; PoseIndex < PoseCount; ++PoseIndex)
+	{
+		FbxPose* Pose = Scene->GetPose(PoseIndex);
+		if (!Pose || !Pose->IsBindPose()) continue;
+		for (FbxNode* Current : Nodes)
+		{
+			FbxArray<FbxNode*> MissingAncestors, MissingDeformers, MissingDeformersAncestors, WrongMatrices;
+			if (Pose->IsValidBindPoseVerbose(Current, MissingAncestors, MissingDeformers, MissingDeformersAncestors, WrongMatrices, 1.e-4)) return true;
+
+			for (int A = 0; A < MissingAncestors.GetCount(); ++A)
+				Pose->Add(MissingAncestors[A], MissingAncestors[A]->EvaluateGlobalTransform(FBXSDK_TIME_ZERO));
+			if (Pose->IsValidBindPose(Current)) return true;
+
+			FbxNode* Parent = Current->GetParent();
+			for (; Parent; Parent = Parent->GetParent())
+				if (auto* Attribute = Parent->GetNodeAttribute(); Attribute && Attribute->GetAttributeType() == FbxNodeAttribute::eNull) break;
+			if (Parent && Pose->IsValidBindPose(Parent)) return true;
+		}
+	}
+	return false;
+}
+
 bool FImport::BuildRig(FRig& Rig)
 {
 	Rig.ParentBind = Bind(Rig.Root->GetParent());
 	const FbxAMatrix FrameInverse = Options.bBakeSkeletalMeshes ? FbxAMatrix() : Rig.ParentBind.Inverse();
 	if (!FiniteMatrix(EngineMatrix(Rig.ParentBind, UnitScale))) { Error = "Singular rig parent bind transform"; return false; }
+	const auto BoneGlobal = [&](FbxNode* Node) -> FbxAMatrix
+	{
+		return FrameInverse * (Rig.bUseTimeZeroAsBindPose ? Node->EvaluateGlobalTransform(FBXSDK_TIME_ZERO) : Bind(Node));
+	};
+	FReferenceSkeleton BindReference;
 	std::function<bool(FbxNode*, int)> Visit = [&](FbxNode* Node, int Parent)
 	{
 		if (!Rig.Needed.contains(Node)) return true;
 		if (Rig.Bones.size() >= 65536) { Error = "More than 65536 bones in a rig"; return false; }
 		const uint16 Index = static_cast<uint16>(Rig.Bones.size());
 		Rig.Bones.push_back(Node); Rig.Indices[Node] = Index;
-		const FbxAMatrix Global = FrameInverse * Bind(Node);
-		const FbxAMatrix Local = Parent < 0 ? Global : (FrameInverse * Bind(Rig.Bones[Parent])).Inverse() * Global;
+		const FbxAMatrix Global = BoneGlobal(Node);
+		const FbxAMatrix Local = Parent < 0 ? Global : BoneGlobal(Rig.Bones[Parent]).Inverse() * Global;
+		if (Rig.bUseTimeZeroAsBindPose)
+		{
+			const FbxAMatrix BindGlobal = FrameInverse * Bind(Node);
+			const FbxAMatrix BindLocal = Parent < 0 ? BindGlobal : (FrameInverse * Bind(Rig.Bones[Parent])).Inverse() * BindGlobal;
+			BindReference.RefBoneInfo.Add({ Node->GetName(), Parent });
+			BindReference.RefBonePose.Add(EnginePose(BindLocal, UnitScale));
+		}
 		const FMatrix Converted = EngineMatrix(Local, UnitScale);
 		if (!FiniteMatrix(Converted)) { Error = "Invalid bind transform: " + NodePath(Node); return false; }
-		const FbxQuaternion Q = Local.GetQ();
-		const FVector Translation = Reflect(Local.GetT()) * static_cast<float>(UnitScale);
-		const FbxVector4 S = Local.GetS();
-		FTransform Transform(FQuat(static_cast<float>(Q[0]), static_cast<float>(-Q[1]), static_cast<float>(Q[2]), static_cast<float>(-Q[3])).Normalized(),
-			Translation, FVector(static_cast<float>(S[0]), static_cast<float>(S[1]), static_cast<float>(S[2])));
+		const FTransform Transform = EnginePose(Local, UnitScale);
 		const FMatrix Rebuilt = Transform.GetLocalMatrix();
 		bool Difference = false;
 		for (int R = 0; R < 4; ++R) for (int C = 0; C < 4; ++C)
@@ -553,6 +696,13 @@ bool FImport::BuildRig(FRig& Rig)
 		return true;
 	};
 	if (!Visit(Rig.Root, -1) || !Rig.Reference.Validate(Error)) return false;
+	if (Rig.bUseTimeZeroAsBindPose)
+	{
+		TArray<FMatrix> BindModel, TimeZeroModel;
+		if (!BindReference.GetModelSpaceMatrices(BindModel, Error) || !Rig.Reference.GetModelSpaceMatrices(TimeZeroModel, Error)) return false;
+		Rig.TimeZeroRebindMatrices.SetNum(TimeZeroModel.Num());
+		for (int32 Bone = 0; Bone < TimeZeroModel.Num(); ++Bone) Rig.TimeZeroRebindMatrices[Bone] = BindModel[Bone].Inverse() * TimeZeroModel[Bone];
+	}
 	Rig.Key = MakeKey("SKEL", Rig.Root->GetName(), "Skeleton:" + NodePath(Rig.Root));
 	if (Rig.Key.empty()) return false;
 	auto Asset = Data(EFbxAssetType::Skeleton, Rig.Key, "Skeleton:" + NodePath(Rig.Root));
@@ -674,7 +824,7 @@ FString FImport::OpacityTexture(FbxSurfaceMaterial* Material, const FString& Dif
 	{
 		Warn("Opacity baking skipped: " + FString(Material->GetName()) +
 			"; unsupported image format (diffuse=" + (Diffuse ? std::to_string(Diffuse->Format) : "none") +
-			", opacity=" + std::to_string(Opacity->Format) + "); original Diffuse and scalar opacity used");
+			", opacity=" + std::to_string(Opacity->Format) + "); original Diffuse used and material stays opaque");
 		return {};
 	}
 	auto Pixel = [](const FImageData& Image, uint32 X, uint32 Y) -> std::array<uint8, 4>
@@ -746,8 +896,9 @@ FString FImport::Material(FbxSurfaceMaterial* M)
 		const double Factor = Lambert->DiffuseFactor.Get();
 		DiffuseFactor = static_cast<float>(Factor);
 		// Diffuse를 선형 색상으로 해석하는 임포트 기본값이다. 강도 계수도 선형 공간에서 곱한다.
+		// 언리얼처럼 TransparencyFactor로 불투명도를 정하지 않는다. 내보낸 도구마다 값의 의미가 달라 불투명 메시가 투명해질 수 있다.
 		Asset.Material.DiffuseOrFactor = FVector4(static_cast<float>(Color[0] * Factor), static_cast<float>(Color[1] * Factor),
-			static_cast<float>(Color[2] * Factor), static_cast<float>(std::clamp(1. - Lambert->TransparencyFactor.Get(), 0., 1.)));
+			static_cast<float>(Color[2] * Factor), 1.f);
 		Asset.Material.ShadingModel = ELightingModel::Lambert;
 		Asset.Material.SpecularFactor = 0.f;
 		const FbxDouble3 Emissive = Lambert->Emissive.Get();
@@ -797,7 +948,8 @@ FString FImport::Material(FbxSurfaceMaterial* M)
 	const FbxProperty Bump = M->FindProperty(FbxSurfaceMaterial::sBump);
 	if (!Normal && Bump.IsValid() && Bump.GetSrcObjectCount<FbxTexture>() > 0)
 		Warn("Unsupported Bump map: " + FString(M->GetName()) + "; normal input left empty");
-	Asset.Material.BlendState = Asset.Material.DiffuseOrFactor.W < 1.f ? EBlendState::AlphaBlend : EBlendState::Opaque;
+	// 투명도 텍스처가 연결되어 있을 때만 AlphaBlend를 쓴다. (UE FbxMaterialImport.cpp:827)
+	Asset.Material.BlendState = EBlendState::Opaque;
 	const FString OpacityKey = Texture(M->FindProperty(FbxSurfaceMaterial::sTransparentColor));
 	if (!Error.empty()) return {};
 	if (!OpacityKey.empty())
@@ -807,8 +959,6 @@ FString FImport::Material(FbxSurfaceMaterial* M)
 		if (!BakedTexture.empty())
 		{
 			Asset.Material.DiffuseTexture = BakedTexture;
-			// 연결된 맵이 불투명도 입력을 제공한다. 상수 계수와 원본 Diffuse 알파를 중복 적용하지 않는다.
-			Asset.Material.DiffuseOrFactor.W = 1.f;
 			Asset.Material.BlendState = EBlendState::AlphaBlend;
 		}
 		else SkippedOpacityTextures.insert(M);
@@ -1028,6 +1178,32 @@ void FImport::LODThresholds(const FOutputGroup& Group, FFbxAssetData& Asset)
 		if (Asset.ScreenThresholds[I] >= Asset.ScreenThresholds[I - 1]) Asset.ScreenThresholds[I] = Asset.ScreenThresholds[I - 1] * .5f;
 }
 
+// 정점을 가중치대로 0초 자세로 옮긴다. 런타임 스키닝과 같은 계산이다. (UE InterchangeSkeletalMeshFactory)
+void FImport::RebindToTimeZero(const FRig& Rig, FFbxMeshLODData& LOD)
+{
+	auto& Vertices = LOD.MeshData.Vertices;
+	for (int32 V = 0; V < Vertices.Num(); ++V)
+	{
+		FVertex& Vertex = Vertices[V];
+		const FVector BindPosition = Vertex.Position, BindNormal = Vertex.Normal;
+		const FVector BindTangent(Vertex.Tangent.X, Vertex.Tangent.Y, Vertex.Tangent.Z);
+		FVector Position = FVector::ZeroVector, Normal = FVector::ZeroVector, Tangent = FVector::ZeroVector;
+		for (int K = 0; K < 4; ++K)
+		{
+			const float Weight = LOD.SkinWeights.InfluenceWeights[V][K];
+			if (Weight <= 0.f) continue;
+			const FMatrix& Matrix = Rig.TimeZeroRebindMatrices[LOD.SkinWeights.InfluenceBones[V][K]];
+			Position += Matrix.TransformPosition(BindPosition) * Weight;
+			Normal += Matrix.TransformVector(BindNormal) * Weight;
+			Tangent += Matrix.TransformVector(BindTangent) * Weight;
+		}
+		Vertex.Position = Position;
+		Vertex.Normal = Normal.GetSafeNormal();
+		const FVector NewTangent = Tangent.GetSafeNormal();
+		Vertex.Tangent = FVector4(NewTangent.X, NewTangent.Y, NewTangent.Z, Vertex.Tangent.W);
+	}
+}
+
 bool FImport::CookMesh(const FOutputGroup& Group)
 {
 	const bool Skinned = Group.Root != nullptr;
@@ -1060,6 +1236,8 @@ bool FImport::CookMesh(const FOutputGroup& Group)
 				Mesh.BuildTangentSpace();
 				for (const auto& [Index, Tangent] : SourceTangents) Mesh.Vertices[Index].Tangent = Tangent;
 			}
+			if (Skinned)
+				if (const auto& Rig = Rigs.at(NodePath(Group.Root)); Rig.bUseTimeZeroAsBindPose) RebindToTimeZero(Rig, Asset.LODs[L]);
 			FVector Min = Mesh.Vertices[0].Position, Max = Min;
 			for (const auto& V : Mesh.Vertices)
 			{
@@ -1076,6 +1254,159 @@ bool FImport::CookMesh(const FOutputGroup& Group)
 	return true;
 }
 
+// 옵션에 맞는 클립 구간을 정하고 프레임 경계에 맞춘다. 맞출 수 없으면 false다. (UE UInterchangeGenericAnimationPipeline)
+bool FImport::GetAnimationRange(FbxNode* RootNode, FbxAnimStack* Stack, double SampleRate, double& OutStart, double& OutStop)
+{
+	const FString StackName = Stack->GetName();
+	if (Options.AnimationRange == EInterchangeAnimationRange::Timeline)
+	{
+		const FbxTimeSpan Span = Stack->GetLocalTimeSpan();
+		OutStart = Span.GetStart().GetSecondDouble();
+		OutStop = Span.GetStop().GetSecondDouble();
+	}
+	else if (Options.AnimationRange == EInterchangeAnimationRange::SetRange)
+	{
+		OutStart = Options.FrameImportRangeMin / SampleRate;
+		OutStop = Options.FrameImportRangeMax / SampleRate;
+	}
+	else
+	{
+		FbxTimeSpan Span(FBXSDK_TIME_INFINITE, FBXSDK_TIME_MINUS_INFINITE);
+		RootNode->GetAnimationInterval(Span, Stack);
+		OutStart = Span.GetStart().GetSecondDouble();
+		OutStop = Span.GetStop().GetSecondDouble();
+	}
+
+	const auto SubFrame = [](double Frame) { return Frame - std::floor(Frame); };
+	const auto IsFrameBorder = [](double Sub) { return Sub <= KINDA_SMALL_NUMBER || 1.0 - Sub <= KINDA_SMALL_NUMBER; };
+	const double SequenceLength = std::max(OutStop - OutStart, MINIMUM_ANIMATION_LENGTH);
+	if (!IsFrameBorder(SubFrame(SequenceLength * SampleRate)))
+	{
+		if (Options.FrameAlignment == EInterchangeFrameAlignment::None)
+		{
+			Warn("Animation length " + std::to_string(SequenceLength) + " is not compatible with frame rate " + std::to_string(SampleRate) +
+				"; enable Frame Alignment to import: " + StackName);
+			return false;
+		}
+		const auto Align = [&](double Time)
+		{
+			const double Frame = Time * SampleRate;
+			if (IsFrameBorder(SubFrame(Frame))) return Time;
+			switch (Options.FrameAlignment)
+			{
+			case EInterchangeFrameAlignment::SnapToFloor: return std::floor(Frame) / SampleRate;
+			case EInterchangeFrameAlignment::SnapToClosest: return std::round(Frame) / SampleRate;
+			case EInterchangeFrameAlignment::SnapToCeiling: return std::ceil(Frame) / SampleRate;
+			default: return Time;
+			}
+		};
+		OutStart = Align(OutStart);
+		OutStop = Align(OutStop);
+		Warn("Animation length has been adjusted to align with frame borders: " + StackName);
+	}
+	if (OutStop <= OutStart)
+	{
+		Warn("Animation range is empty: " + StackName);
+		return false;
+	}
+	return true;
+}
+
+// 움직이는 본이 있는 클립마다 일정한 간격으로 본의 값을 물어 키를 만든다. (UE FFbxScene::AddAnimation, FFbxAnimation)
+void FImport::CookAnimations(const FRig& Rig)
+{
+	const double SampleRate = GetBoneAnimationSampleRate(FrameRate);
+	FbxTime TimeStep = 0;
+	TimeStep.SetSecondDouble(1.0 / SampleRate);
+
+	const int32 BoneCount = static_cast<int32>(Rig.Bones.size());
+	// 부모 기준 값 계산은 BuildRig의 기본 자세와 같은 규칙을 따른다.
+	const FbxAMatrix FrameInverse = Options.bBakeSkeletalMeshes ? FbxAMatrix() : Rig.ParentBind.Inverse();
+	std::vector<FbxAMatrix> Globals(BoneCount);
+
+	for (int32 StackIndex = 0; StackIndex < Scene->GetSrcObjectCount<FbxAnimStack>(); ++StackIndex)
+	{
+		FbxAnimStack* Stack = Scene->GetSrcObject<FbxAnimStack>(StackIndex);
+		const FString StackName = Stack->GetName();
+
+		// 곡선이 있는 본과 그 자식 본만 트랙을 만든다. Rig.Bones는 부모가 항상 자식보다 앞에 있다.
+		std::vector<bool> ValidTracks(BoneCount, false);
+		bool bHasAnimatedBone = false;
+		for (int32 Bone = 0; Bone < BoneCount; ++Bone)
+		{
+			const int32 Parent = Rig.Reference.RefBoneInfo[Bone].ParentIndex;
+			ValidTracks[Bone] = IsNodeAnimated(Rig.Bones[Bone], Stack) || (Parent >= 0 && ValidTracks[Parent]);
+			bHasAnimatedBone = bHasAnimatedBone || ValidTracks[Bone];
+		}
+		if (!bHasAnimatedBone)
+		{
+			Warn("Animation stack has no animated bones: " + StackName);
+			continue;
+		}
+
+		double StartSeconds = 0.0, StopSeconds = 0.0;
+		if (!GetAnimationRange(Rig.Root, Stack, SampleRate, StartSeconds, StopSeconds)) continue;
+		Scene->SetCurrentAnimationStack(Stack);
+
+		const double SequenceLength = std::max(StopSeconds - StartSeconds, 1.0 / SampleRate);
+		const int32 NumFrame = static_cast<int32>(std::lround(SequenceLength * SampleRate));
+		const int32 BakeKeyCount = NumFrame + 1;
+
+		FFbxAssetData Asset = Data(EFbxAssetType::AnimSequence, {}, "Animation:" + NodePath(Rig.Root) + StackName);
+		Asset.SkeletonKey = Rig.Key;
+		Asset.Animation.Name = StackName;
+		Asset.Animation.FrameRate = static_cast<float>(SampleRate);
+		Asset.Animation.NumberOfFrames = NumFrame;
+		Asset.Animation.NumberOfKeys = BakeKeyCount;
+
+		std::vector<FBoneAnimationTrack> Tracks(BoneCount);
+		for (int32 Bone = 0; Bone < BoneCount; ++Bone)
+		{
+			Tracks[Bone].Name = Rig.Reference.RefBoneInfo[Bone].Name;
+			Tracks[Bone].BoneTreeIndex = Bone;
+			Tracks[Bone].InternalTrackData.PosKeys.Reserve(BakeKeyCount);
+			Tracks[Bone].InternalTrackData.RotKeys.Reserve(BakeKeyCount);
+			Tracks[Bone].InternalTrackData.ScaleKeys.Reserve(BakeKeyCount);
+		}
+
+		FbxTime CurrentTime;
+		CurrentTime.SetSecondDouble(StartSeconds);
+		for (int32 FrameIndex = 0; FrameIndex < BakeKeyCount; ++FrameIndex, CurrentTime += TimeStep)
+		{
+			for (int32 Bone = 0; Bone < BoneCount; ++Bone)
+			{
+				Globals[Bone] = FrameInverse * Rig.Bones[Bone]->EvaluateGlobalTransform(CurrentTime);
+				if (!ValidTracks[Bone]) continue;
+
+				const int32 Parent = Rig.Reference.RefBoneInfo[Bone].ParentIndex;
+				const FbxAMatrix Local = Parent < 0 ? Globals[Bone] : Globals[Parent].Inverse() * Globals[Bone];
+				const FTransform Pose = EnginePose(Local, UnitScale);
+				if (Pose.ContainsNaN())
+				{
+					ValidTracks[Bone] = false;
+					Warn("Invalid animation transform: " + StackName + " " + NodePath(Rig.Bones[Bone]));
+					continue;
+				}
+				FRawAnimSequenceTrack& Track = Tracks[Bone].InternalTrackData;
+				Track.PosKeys.Add(Pose.Location);
+				Track.RotKeys.Add(Pose.Rotation);
+				Track.ScaleKeys.Add(Pose.Scale);
+			}
+		}
+
+		for (int32 Bone = 0; Bone < BoneCount; ++Bone)
+		{
+			if (!ValidTracks[Bone]) continue;
+			CompressRawAnimSequenceTrack(Tracks[Bone].InternalTrackData);
+			Asset.Animation.Tracks.Add(std::move(Tracks[Bone]));
+		}
+
+		HTR_LOG(Info, "FBX Animation: {} (Skeleton {}) FrameRate={} Frames={} Keys={} Tracks={}/{}",
+			StackName, Rig.Key, Asset.Animation.FrameRate, NumFrame, BakeKeyCount, Asset.Animation.Tracks.Num(), BoneCount);
+		Animations.push_back(std::move(Asset));
+	}
+}
+
 bool FImport::Run()
 {
 	Gather(Scene->GetRootNode(), true);
@@ -1085,7 +1416,17 @@ bool FImport::Run()
 	// 메시가 연결되는 리그만 출력한다. 포즈/컨트롤 본은 실제 본 테이블에 유지된다.
 	std::set<FbxNode*> Used;
 	for (const auto& Item : Meshes) if (Item.Rig) Used.insert(Item.Rig);
-	for (auto& [Path, Rig] : Rigs) if (Used.contains(Rig.Root) && !BuildRig(Rig)) return false;
+	for (auto& [Path, Rig] : Rigs) if (Used.contains(Rig.Root))
+	{
+		// 바인드 포즈가 유효하지 않으면 옵션과 상관없이 0초 자세를 쓴다. (UE InterchangeGenericCommonSkeletalMeshesAndAnimationsProperties)
+		Rig.bUseTimeZeroAsBindPose = Options.bUseT0AsRefPose;
+		if (!Rig.bUseTimeZeroAsBindPose && !IsValidBindPose(Rig.Root))
+		{
+			Rig.bUseTimeZeroAsBindPose = true;
+			Warn("Invalid BindPose; mesh is rebound to the time 0 pose: " + NodePath(Rig.Root));
+		}
+		if (!BuildRig(Rig)) return false;
+	}
 	std::map<FString, FOutputGroup> Groups;
 	for (auto& Item : Meshes)
 	{
@@ -1097,6 +1438,15 @@ bool FImport::Run()
 		Group.Items.push_back(&Item);
 	}
 	for (const auto& [Key, Group] : Groups) if (!CookMesh(Group)) return false;
+	if (Options.bImportAnimations)
+		for (const auto& [Path, Rig] : Rigs) if (Used.contains(Rig.Root)) CookAnimations(Rig);
+	// 클립이 하나면 "파일이름_Anim", 여러 개면 클립 이름을 쓴다. (UE InterchangeGenericAssetsPipeline)
+	for (auto& Asset : Animations)
+	{
+		Asset.Key = MakeKey("ANIM", Animations.size() == 1 ? FString("Anim") : Asset.Animation.Name, Asset.SourceObject);
+		if (Asset.Key.empty()) return false;
+		Output.Add(std::move(Asset));
+	}
 	std::set<FString> ReferencedTextures;
 	for (const auto& Asset : Output) if (Asset.Type == EFbxAssetType::Material)
 	{
@@ -1141,6 +1491,13 @@ bool FFbxImporter::Cook(const FString& SourcePath, const FFbxImportOptions& Opti
 		if (auto* Info = Scene->GetSceneInfo()) Blender = Lower(Info->Original_ApplicationName.Get().Buffer()).find("blender") != FString::npos;
 		const double UnitScale = Scene->GetGlobalSettings().GetSystemUnit().GetScaleFactor() / 100.;
 		if (!std::isfinite(UnitScale) || UnitScale <= 0) { Error = "Invalid FBX scene unit"; return false; }
+		const double FbxFrameRate = FbxTime::GetFrameRate(Scene->GetGlobalSettings().GetTimeMode());
+		for (int32 StackIndex = 0; StackIndex < Scene->GetSrcObjectCount<FbxAnimStack>(); ++StackIndex)
+		{
+			FbxAnimStack* Stack = Scene->GetSrcObject<FbxAnimStack>(StackIndex);
+			if (Stack->GetMemberCount<FbxAnimLayer>() > 1)
+				MergeAllLayerAnimation(Scene, Stack, static_cast<int32>(std::lround(GetBoneAnimationSampleRate(FbxFrameRate))));
+		}
 		// UE의 Z-up/-ParityOdd 기준을 사용한다. Deep 변환으로 Bake off의 로컬 기하도 같은 축이 된다.
 		FbxAxisSystem Target(FbxAxisSystem::eZAxis, static_cast<FbxAxisSystem::EFrontVector>(-FbxAxisSystem::eParityOdd), FbxAxisSystem::eRightHanded);
 		Target.DeepConvertScene(Scene);
@@ -1148,6 +1505,7 @@ bool FFbxImporter::Cook(const FString& SourcePath, const FFbxImportOptions& Opti
 		if (!Converter.Triangulate(Scene, true)) { Error = "FBX SDK triangulation failed"; return false; }
 		FImport Import(Scene, Options, SourceKey, Source, Destination, Out, Warnings, Error);
 		Import.UnitScale = UnitScale; Import.bBlender = Blender;
+		Import.FrameRate = FbxFrameRate;
 		const bool Result = Import.Run();
 		if (!Result) Out.Empty();
 		return Result;

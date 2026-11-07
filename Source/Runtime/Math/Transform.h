@@ -26,6 +26,9 @@ struct FTransform
 	FVector GetRight() const;
 	FQuat GetOrientation() const;
 
+	// 위치, 회전, 크기 중 NaN이나 무한대가 있으면 true다.
+	bool ContainsNaN() const;
+
 	FVector Location = FVector(0, 0, 0);
 	FVector Scale = FVector(1, 1, 1);
 	FQuat Rotation = FQuat::Identity();

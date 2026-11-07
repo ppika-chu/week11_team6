@@ -528,6 +528,17 @@ bool UAssetManager::ReorientStaticMesh(UStaticMesh& Mesh, const std::function<FV
 	return true;
 }
 
+void UAssetManager::ForEachAsset(const std::function<void(URenderAsset& Asset)>& Func)
+{
+	for (auto& [Key, Asset] : Get().AssetMap)
+	{
+		if (Asset && !Asset->IsRetired())
+		{
+			Func(*Asset);
+		}
+	}
+}
+
 void UAssetManager::ForEachObjStaticMesh(const std::function<void(const FString& Key, UStaticMesh& Mesh)>& Func)
 {
 	for (auto& [Key, Asset] : Get().AssetMap)

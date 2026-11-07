@@ -1,7 +1,6 @@
 #pragma once
 
-#include "UObject/Object.h"
-#include "UObject/Class.h"
+#include "Asset/RenderAsset.h"
 
 class USkeleton;
 
@@ -13,10 +12,10 @@ struct FAnimExtractContext
 };
 
 // 공유 애니메이션 Asset의 최소 계약.
-// TODO: 데이터/Import 저장 구현 예정.
-class UAnimationAsset : public UObject
+// .fbxbin 로더가 에셋으로 등록하므로 URenderAsset을 상속한다.
+class UAnimationAsset : public URenderAsset
 {
-	DECLARE_CLASS(UAnimationAsset, UObject)
+	DECLARE_CLASS(UAnimationAsset, URenderAsset)
 public:
 	virtual float GetPlayLength() const = 0;
 	USkeleton* GetSkeleton() const { return Skeleton; }

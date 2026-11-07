@@ -149,6 +149,13 @@ AActor* UWorld::SpawnActor(UClass* Class, FName InName, const FTransform* Transf
 	// 4. Level->Actors에 등록
 	SpawnLevel->AddActor(NewActor);
 
+	// 프리뷰 월드는 BeginPlay가 없으므로 스폰할 때 Tick을 등록한다. (UE UActorComponent::RegisterComponentWithWorld)
+	if (WorldType == EWorldType::EditorPreview)
+	{
+		NewActor->RegisterAllActorTickFunctions(true);
+		return NewActor;
+	}
+
 	// 5. PlayList에 추가
 	BeginPlayList.Enqueue(NewActor);
 
@@ -160,6 +167,18 @@ void UWorld::Tick(float DeltaTime)
 	{
 		SCOPE_CYCLE_COUNTER(STAT_UpdateAllTransforms);
 		Scene.UpdateAllTransforms();
+	}
+
+	if (WorldType == EWorldType::EditorPreview)
+	{
+		// 게임 시작 처리(BeginPlay), Lua, 충돌 없이 등록된 Tick 함수만 실행한다.
+		bInGameTick = true;
+		TickTaskManager.RunAllTickGroups(DeltaTime);
+		FlushPendingDestroyComponents();
+		bInGameTick = false;
+
+		FlushPendingDestroyActors();
+		return;
 	}
 
 	// 에디터 월드면 더이상 틱을 돌리지 않는다.
@@ -720,7 +739,7 @@ void UWorld::EndPlay()
 	}
 	// 현재 단일 게임 월드의 대기가 다음 Play까지 남지 않도록 정리한다.
 
-	if (WorldType != EWorldType::Editor)
+	if (WorldType != EWorldType::Editor && WorldType != EWorldType::EditorPreview)
 	{
 		if (FLuaVM* LuaVM = GEngine ? GEngine->GetLuaVM() : nullptr)
 		{
