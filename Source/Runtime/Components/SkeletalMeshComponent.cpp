@@ -65,7 +65,7 @@ bool USkeletalMeshComponent::InitializeAnimScriptInstance(bool bForceReinit)
 
 void USkeletalMeshComponent::ClearAnimScriptInstance()
 {
-	// 전역 종료 정리에서는 소유 Component보다 Instance가 먼저 삭제될 수 있다.
+	// 전역 객체 정리로 Instance가 먼저 삭제되었을 수 있으므로 생존 여부를 확인한다.
 	if (AnimScriptInstance && FindLiveObjectByAddress(AnimScriptInstance))
 	{
 		AnimScriptInstance->UninitializeAnimation();

@@ -23,5 +23,5 @@ public:
 	void SetSkeleton(USkeleton* InSkeleton) { Skeleton = InSkeleton; }
 
 private:
-	USkeleton* Skeleton = nullptr; // 비소유 참조. Asset 사용 기간 동안 유효해야 한다.
+	USkeleton* Skeleton = nullptr; // 외부에서 지정한 Skeleton. 이 Asset이 삭제하지 않으며 사용 기간 동안 유효해야 한다.
 };

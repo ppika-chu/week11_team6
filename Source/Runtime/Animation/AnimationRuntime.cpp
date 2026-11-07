@@ -7,22 +7,21 @@
 
 namespace
 {
-	// lerp의 첫번째 항만 처리한다 (t*A + (1-t)B 에서 t*A 부분)
+	// lerp의 첫 번째 항만 처리한다 (t*A + (1-t)*B에서 t*A 부분).
 	FTransform WeightTransform(const FTransform& Source, float Weight)
 	{
 		FTransform Result;
 		Result.Location = Source.Location * Weight;
 		Result.Scale = Source.Scale * Weight;
 
-		// 쿼터니언에 대한 보간은 slerp가 가장 정확하지만
-		// 연산이 무겁기때문에, nlerp로 처리한다
-		// 여기선 lerp까지만 진행하고 마지막 처리 부분에서 normalize를 처리하는 방식으로 구현한다
+		// Quaternion도 lerp처럼 성분별로 가중합을 구하고 마지막에 normalize한다.
+		// 두 Pose를 혼합할 때는 이 과정이 nlerp가 된다.
 		Result.Rotation = FQuat(Source.Rotation.X * Weight, Source.Rotation.Y * Weight, Source.Rotation.Z * Weight, Source.Rotation.W * Weight);
 		return Result;
 	}
 
-	// lerp의 두번째 항 (1-t)B를 처리한다
-	// 이때 rotation에 대한 최단거리 보정을 해준다
+	// lerp의 다음 항 (1-t)*B를 더한다. 여러 Pose를 혼합할 때는 각 Pose의 Weight를 사용한다.
+	// 이때 rotation은 최단 경로로 혼합되도록 Quaternion 부호를 맞춘다.
 	void AccumulateWithShortestRotation(const FTransform& Source, FTransform& Dest, float Weight)
 	{
 		const FTransform Weighted = WeightTransform(Source, Weight);
@@ -30,8 +29,7 @@ namespace
 		Dest.Location += Weighted.Location;
 		Dest.Scale += Weighted.Scale;
 
-		// 쿼터니언 공간의 회전 벡터의 내적값을 통해 최단거리 계산을 한다
-		// 쉽게 생각하면 90도를 넘어가는 회전 범위를 90도 안으로 줄이는 작업이라고 생각하면 된다
+		// 내적이 음수이면 같은 회전을 나타내는 반대 부호를 사용해 최단 경로로 혼합한다.
 		const FQuat& Incoming = Weighted.Rotation;
 		FQuat& Rotation = Dest.Rotation;
 		const float Dot = Rotation.X * Incoming.X + Rotation.Y * Incoming.Y

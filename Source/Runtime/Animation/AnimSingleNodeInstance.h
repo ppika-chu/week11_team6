@@ -32,8 +32,8 @@ protected:
 	virtual FAnimNode_Base* GetCustomRootNode() override { return &SingleNode; }
 
 private:
-	FAnimNode_SingleNode SingleNode;
-	UAnimationAsset* CurrentAsset = nullptr; // 비소유 참조. 재생 중 Asset은 유효해야 한다.
+	FAnimNode_SingleNode SingleNode; // 이 Instance가 멤버로 보관하며 Root로 제공하는 Node.
+	UAnimationAsset* CurrentAsset = nullptr; // 외부에서 지정한 재생 Asset. Instance가 삭제하지 않으며 재생 중 유효해야 한다.
 	float CurrentTime = 0.0f;
 	float PlayRate = 1.0f;
 	bool bPlaying = true;

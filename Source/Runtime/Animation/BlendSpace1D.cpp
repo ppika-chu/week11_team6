@@ -3,6 +3,6 @@
 
 UBlendSpace1D::UBlendSpace1D()
 {
-	// UE처럼 파생 Asset이 사용할 축을 지정하고 기반 클래스가 이를 소비한다.
+	// X축을 지정한다. 기반 클래스의 구성·구간 생성·검색이 이 축을 사용한다.
 	DimensionIndices = { 0 };
 }

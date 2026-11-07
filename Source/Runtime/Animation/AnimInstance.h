@@ -7,7 +7,7 @@ class USkeletalMeshComponent;
 struct FAnimNode_Base;
 struct FAnimPose;
 
-// 컴포넌트별 애니메이션 실행 상태. Game Thread에서 사용한다.
+// 컴포넌트별 애니메이션 실행 상태와 Graph 실행을 관리한다.
 class UAnimInstance : public UObject
 {
 	DECLARE_CLASS(UAnimInstance, UObject)
@@ -26,11 +26,12 @@ public:
 	virtual void NativeUpdateAnimation(float DeltaSeconds) {}
 
 protected:
-	// 파생 Instance가 Graph를 보관하고 수명 동안 유효한 Root를 제공한다.
+	// 파생 AnimInstance가 Graph의 Node들을 보관하고 실행 시작점의 주소를 반환한다.
 	// Graph가 없는 기본 Instance는 Reference Pose를 사용한다.
 	virtual FAnimNode_Base* GetCustomRootNode() { return nullptr; }
 
 private:
-	FAnimNode_Base* RootNode = nullptr; // 비소유 참조. 여기서 Node를 생성·삭제하지 않는다.
+	// 파생 AnimInstance가 보관한 Graph의 실행 시작점. GetCustomRootNode에서 받은 주소다.
+	FAnimNode_Base* RootNode = nullptr;
 	bool bUninitialized = true;
 };
