@@ -80,7 +80,7 @@ public:
 	void ResampleData();
 
 	// 재생 계산 — 입력으로 Sample·Weight를 선택하고, 혼합 길이와 지정 시각의 Pose를 계산한다.
-	// TODO: Player에서 선택 결과의 Sample별 시간을 갱신한 뒤 GetAnimationPose에 전달하도록 연결 예정.
+	// TODO: BlendSpace Player Node의 Update에서 UAnimInstance::BlendSpaceAdvanceImmediate로 시간을 갱신하고, Evaluate에서 GetAnimationPose에 전달하도록 연결 예정.
 	// Sample Cache는 호출자가 보관한다. 재생 중에는 Asset 구성과 참조한 Skeleton/Sequence의 수명을 유지한다.
 	bool GetSamplesFromBlendInput(const FVector& BlendInput, TArray<FBlendSampleData>& OutSampleDataList, int32& InOutCachedTriangulationIndex) const;
 	float GetAnimationLengthFromSampleData(const TArray<FBlendSampleData>& SampleDataList) const;

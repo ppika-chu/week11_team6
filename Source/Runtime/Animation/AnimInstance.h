@@ -6,6 +6,9 @@
 class USkeletalMeshComponent;
 struct FAnimNode_Base;
 struct FAnimPose;
+class UBlendSpace;
+struct FVector;
+struct FBlendSampleData;
 
 // 컴포넌트별 애니메이션 실행 상태와 Graph 실행을 관리한다.
 class UAnimInstance : public UObject
@@ -19,6 +22,10 @@ public:
 	bool IsInitialized() const { return !bUninitialized; }
 
 	USkeletalMeshComponent* GetSkelMeshComponent() const;
+
+	// BlendSpace 시간 갱신 — CurrentTime은 0~1 진행률이며 Cache와 구간 index는 BlendSpace Player Node가 보관한다.
+	// TODO: BlendSpace Player Node의 Update에서 호출하고, Evaluate에서 갱신된 Cache로 UBlendSpace::GetAnimationPose를 호출하도록 연결 예정.
+	void BlendSpaceAdvanceImmediate(UBlendSpace* BlendSpace, const FVector& BlendInput, TArray<FBlendSampleData>& BlendSampleDataCache, bool bLooping, float PlayRate, float DeltaSeconds, float& CurrentTime, int32& CachedTriangulationIndex);
 
 	// 파생 Instance가 초기화·정리할 상태가 있을 때 재정의한다.
 	virtual void NativeInitializeAnimation() {}
