@@ -11,9 +11,54 @@
 struct FAnimNode_TwoWayBlend : public FAnimNode_Base
 {
 public:
-	void Initialize() override;
-	void Update(float DeltaTime) override;
-	void Evaluate(FAnimPose& OutPose) override;
+	void Initialize()
+	{
+		if (InputNodeA)
+		{
+			InputNodeA->Initialize();
+		}
+
+		if (InputNodeB && InputNodeB != InputNodeA)
+		{
+			InputNodeB->Initialize();
+		}
+	}
+	void Update(float DeltaTime)
+	{
+		if (InputNodeA)
+		{
+			InputNodeA->Update(DeltaTime);
+		}
+
+		if (InputNodeB && InputNodeB != InputNodeA)
+		{
+			InputNodeB->Update(DeltaTime);
+		}
+	}
+	void Evaluate(FAnimPose& OutPose)
+	{
+		if (InputNodeA && InputNodeB)
+		{
+			FAnimPose PoseA;
+			InputNodeA->Evaluate(PoseA);
+			FAnimPose PoseB;
+			InputNodeB->Evaluate(PoseB);
+			// TODO(BlendAPI): 공용 정적 포즈 Blend API로 PoseA와 PoseB를 Alpha(B의 가중치)에 따라 혼합한다.
+			// API의 반환 방식에 맞춰 혼합 결과를 OutPose에 기록한다.
+		}
+		else if (InputNodeA)
+		{
+			InputNodeA->Evaluate(OutPose);
+		}
+		else if (InputNodeB)
+		{
+			InputNodeB->Evaluate(OutPose);
+		}
+		else
+		{
+			OutPose.LocalTransforms.Reset();
+		}
+	}
 
 	void SetInputNodeA(FAnimNode_Base* InInputNodeA) { InputNodeA = InInputNodeA; }
 	FAnimNode_Base* GetInputNodeA() const { return InputNodeA; }

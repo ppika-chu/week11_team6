@@ -173,6 +173,9 @@ public:
 
 		const float Alpha = FMath::Clamp(TransitionElapsedTime / Duration, 0.0f, 1.0f);
 
+		// TODO(BlendAPI): 아래 본별 혼합 루프를 공용 포즈 Blend API 호출로 교체한다.
+		// 출발 포즈 OutPose와 목적 포즈 ToPose를 Alpha(목적 포즈의 가중치)로 혼합해 OutPose에 기록한다.
+		// 입력과 출력이 같은 OutPose를 사용하므로 API의 제자리 혼합 지원 여부를 확인한다.
 		for (int32 Index = 0; Index < OutPose.LocalTransforms.Num(); ++Index)
 		{
 			OutPose.LocalTransforms[Index] = FTransform::Blend(OutPose.LocalTransforms[Index],ToPose.LocalTransforms[Index],Alpha);

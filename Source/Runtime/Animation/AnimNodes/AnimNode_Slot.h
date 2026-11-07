@@ -53,6 +53,9 @@ public:
 
 	void BlendLocalPoseInPlace(FAnimPose& OutPose, const FAnimPose& InPose, float Weight)
 	{
+		// TODO(BlendAPI): 아래 본별 혼합 루프를 공용 포즈 Blend API 호출로 교체한다.
+		// 기본 포즈 OutPose와 Montage 포즈 InPose를 Weight(Montage 가중치)로 혼합해 OutPose에 기록한다.
+		// 입력과 출력이 같은 OutPose를 사용하므로 API의 제자리 혼합 지원 여부를 확인한다.
 		for (int32 i = 0; i < OutPose.LocalTransforms.Num(); ++i)
 		{
 			OutPose.LocalTransforms[i] = FTransform::Blend(OutPose.LocalTransforms[i], InPose.LocalTransforms[i], Weight);
