@@ -13,8 +13,13 @@ struct FAnimTransition
 public:
 	using FConditionFunction = std::function<bool(const FAnimUpdateContext&)>;
 
-	void Initialize();
-	void Update(float DeltaTime);
+	void Initialize()
+	{
+		if (TransitionResult)
+		{
+			TransitionResult->Initialize();
+		}
+	}
 
 	bool EvaluateCondition(const FAnimUpdateContext& Context)
 	{

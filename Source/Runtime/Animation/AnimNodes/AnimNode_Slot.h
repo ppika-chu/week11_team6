@@ -2,6 +2,7 @@
 
 #include "AnimNode_Base.h"
 #include "Animation/AnimPose.h"
+#include "Math/EngineMath.h"
 
 #include <string>
 
@@ -13,9 +14,50 @@
 struct FAnimNode_Slot : public FAnimNode_Base
 {
 public:
-	void Initialize() override;
-	void Update(float DeltaTime) override;
-	void Evaluate(FAnimPose& OutPose) override;
+	void Initialize()
+	{
+		if (InputNode)
+		{
+			InputNode->Initialize();
+		}
+	}
+	void Update(float DeltaTime)
+	{
+		if (InputNode)
+		{
+			InputNode->Update(DeltaTime);
+		}
+	}
+	void Evaluate(FAnimPose& OutPose)
+	{
+		if (!InputNode)
+		{
+			OutPose.LocalTransforms.Reset();
+			return;
+		}
+
+		InputNode->Evaluate(OutPose);
+
+		if (MontageWeight <= 0.0f)
+		{
+			return;
+		}
+
+		if (SlotPose.LocalTransforms.Num() != OutPose.LocalTransforms.Num())
+		{
+			return;
+		}
+
+		BlendLocalPoseInPlace(OutPose, SlotPose, MontageWeight);
+	}
+
+	void BlendLocalPoseInPlace(FAnimPose& OutPose, const FAnimPose& InPose, float Weight)
+	{
+		for (int32 i = 0; i < OutPose.LocalTransforms.Num(); ++i)
+		{
+			OutPose.LocalTransforms[i] = FTransform::Blend(OutPose.LocalTransforms[i], InPose.LocalTransforms[i], Weight);
+		}
+	}
 
 	void SetSlotName(const std::string& InSlotName) { SlotName = InSlotName; }
 	const std::string& GetSlotName() const { return SlotName; }

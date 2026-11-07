@@ -16,6 +16,8 @@ struct FTransform
 
 	static FTransform Identity;
 
+	static FTransform Blend(const FTransform& A, const FTransform& B, float Alpha);
+
 	FMatrix GetLocalMatrix() const;
 
 	FVector GetForward() const;

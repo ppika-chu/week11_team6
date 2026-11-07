@@ -1,11 +1,43 @@
 #include "EnginePCH.h"
 #include "Transform.h"
 
+#include <algorithm>
+
 FTransform::FTransform(FVector InL, FVector InS, FRotator InR)
 {
 	Location = InL;
 	Scale = InS;
 	Rotation = InR;
+}
+
+FTransform FTransform::Blend(const FTransform& A, const FTransform& B, float Alpha)
+{
+	const float Weight = std::clamp(Alpha, 0.0f, 1.0f);
+	if (Weight <= 0.0f)
+	{
+		return A;
+	}
+	if (Weight >= 1.0f)
+	{
+		return B;
+	}
+
+	const FQuat From = A.Rotation.Quaternion();
+	const FQuat To = B.Rotation.Quaternion();
+	const float Dot = From.X * To.X + From.Y * To.Y + From.Z * To.Z + From.W * To.W;
+	const float ToWeight = Dot < 0.0f ? -Weight : Weight;
+	const float FromWeight = 1.0f - Weight;
+	const FQuat BlendedRotation(
+		From.X * FromWeight + To.X * ToWeight,
+		From.Y * FromWeight + To.Y * ToWeight,
+		From.Z * FromWeight + To.Z * ToWeight,
+		From.W * FromWeight + To.W * ToWeight);
+
+	FTransform Result;
+	Result.Location = A.Location + (B.Location - A.Location) * Weight;
+	Result.Scale = A.Scale + (B.Scale - A.Scale) * Weight;
+	Result.Rotation = BlendedRotation.Normalized().ToFRotator();
+	return Result;
 }
 
 FMatrix FTransform::GetLocalMatrix() const
