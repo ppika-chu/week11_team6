@@ -25,7 +25,7 @@ public:
 	void CloseAllEditors() { Editors.Reset(); }
 
 	// 이번 프레임에 프리뷰를 그릴 에디터들. 패널이 꺼져 있으면 비어 있다
-	void GetPreviewsToRender(TArray<const FSkeletalMeshEditor*>& OutEditors) const;
+	void GetPreviewsToRender(TArray<const FPersonaAssetEditor*>& OutEditors) const;
 
 	// 열린 에디터 중 하나가 키보드 포커스를 가졌는지. 레벨 단축키(Delete, Space)를 막을 때 쓴다
 	bool HasFocusedEditor() const;
@@ -34,6 +34,6 @@ private:
 	// 재임포트로 retired 된 에셋을 같은 키의 새 객체로 다시 연다. 창 ID가 키라 위치 / 도킹은 그대로
 	void ReopenRetiredEditors();
 
-	TArray<TUniquePtr<FSkeletalMeshEditor>> Editors;
+	TArray<TUniquePtr<FPersonaAssetEditor>> Editors;
 	int32 NextEditorId = 0;     // 창마다 고유한 프리뷰 ViewId 번호. 닫아도 재사용하지 않는다
 };

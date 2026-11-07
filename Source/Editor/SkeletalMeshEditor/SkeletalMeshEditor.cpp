@@ -6,15 +6,8 @@
 
 #include "Asset/AssetManager.h"
 #include "Components/SkeletalMeshComponent.h"
-#include "Engine/Level.h"
-#include "Engine/World.h"
 #include "Editor/HitoriEd/EditorResourcePaths.h"
-#include "GameFramework/Actor/DirectionalLightActor.h"
-#include "GameFramework/Actor/SkyLightActor.h"
-#include "GameFramework/Actor/StaticMeshActor.h"
-#include "Render/LineBatcher.h"
 #include "Render/Mesh.h"
-#include "Render/RenderCommand.h"
 #include "Render/SkeletalMesh.h"
 
 #include <imgui.h>
@@ -25,84 +18,7 @@
 
 namespace
 {
-	// 언리얼 SkeletalDebugRendering과 같은 값
-	constexpr float BoneDrawSize = 0.01f;    // 관절 구 반지름 (m). UPersonaOptions 기본값 1cm
-	constexpr int32 NumSphereSides = 10;     // 구를 이루는 원 하나의 선분 수
-	constexpr int32 NumConeSides = 4;        // 사각뿔
 	constexpr float BonePickMargin = 5.0f;   // 그려진 구 / 뿔 둘레 클릭 여유 (픽셀). 언리얼 FViewport::HitProxySize
-
-	constexpr float FloorSize = 40.0f;       // 바닥 한 변 (m)
-	constexpr float FloorThickness = 1.0f;   // 바닥 두께 (m)
-
-	// 언리얼 UPersonaOptions 기본 색은 Linear 값이다. 프리뷰 타깃은 톤 매핑 뒤 화면 값이라 감마를 씌워 같은 색으로 보이게 한다
-	FVector4 LinearToDisplay(float R, float G, float B)
-	{
-		return FVector4(std::pow(R, 1.0f / 2.2f), std::pow(G, 1.0f / 2.2f), std::pow(B, 1.0f / 2.2f), 1.0f);
-	}
-	const FVector4 DefaultBoneColor = LinearToDisplay(0.0f, 0.0f, 0.025f);           // 남색 (기본)
-	const FVector4 SelectedBoneColor = LinearToDisplay(0.2f, 1.0f, 0.2f);            // 초록 (선택)
-	const FVector4 AffectedBoneColor = LinearToDisplay(1.0f, 1.0f, 1.0f);            // 흰색 (자손)
-	const FVector4 ParentOfSelectedBoneColor = LinearToDisplay(0.85f, 0.45f, 0.12f); // 주황 (부모)
-	const FVector4 RootConnectionColor = LinearToDisplay(1.0f, 0.0f, 0.0f);          // 빨강 (루트)
-
-	// Center를 지나고 AxisA, AxisB가 만드는 평면 위의 원
-	void AddWireCircle(FLineBatcher& LineBatcher, const FVector& Center, const FVector& AxisA, const FVector& AxisB, float Radius, const FVector4& Color)
-	{
-		const float Step = 2.0f * 3.14159265f / static_cast<float>(NumSphereSides);
-		FVector Prev = Center + AxisA * Radius;
-		for (int32 i = 1; i <= NumSphereSides; ++i)
-		{
-			const float Angle = Step * static_cast<float>(i);
-			const FVector Next = Center + (AxisA * std::cos(Angle) + AxisB * std::sin(Angle)) * Radius;
-			LineBatcher.AddLine(Prev, Next, Color);
-			Prev = Next;
-		}
-	}
-
-	// 본 축 기준 XY, XZ, YZ 원 3개
-	void AddWireSphere(FLineBatcher& LineBatcher, const FVector& Center, const FVector& X, const FVector& Y, const FVector& Z, float Radius, const FVector4& Color)
-	{
-		AddWireCircle(LineBatcher, Center, X, Y, Radius, Color);
-		AddWireCircle(LineBatcher, Center, X, Z, Radius, Color);
-		AddWireCircle(LineBatcher, Center, Y, Z, Radius, Color);
-	}
-
-	//  Base 쪽 사각형에서 Apex로 모이는 사각뿔
-	void AddWireCone(FLineBatcher& LineBatcher, const FVector& Base, const FVector& Apex, float Radius, const FVector4& Color)
-	{
-		const FVector ToApex = Apex - Base;
-		if (ToApex.Size() < 1.0e-4f)
-		{
-			return;
-		}
-		const FVector Dir = ToApex.Normalized();
-		const FVector Helper = std::abs(Dir.Z) < 0.99f ? FVector(0.0f, 0.0f, 1.0f) : FVector(1.0f, 0.0f, 0.0f);
-		const FVector U = FVector::Cross(Dir, Helper).Normalized();
-		const FVector V = FVector::Cross(Dir, U);
-
-		FVector Corners[NumConeSides];
-		for (int32 i = 0; i < NumConeSides; ++i)
-		{
-			const float Angle = 2.0f * 3.14159265f * static_cast<float>(i) / static_cast<float>(NumConeSides);
-			Corners[i] = Base + (U * std::cos(Angle) + V * std::sin(Angle)) * Radius;
-		}
-		for (int32 i = 0; i < NumConeSides; ++i)
-		{
-			LineBatcher.AddLine(Corners[i], Apex, Color);
-			LineBatcher.AddLine(Corners[i], Corners[(i + 1) % NumConeSides], Color);
-		}
-	}
-
-	// Start를 구 반지름만큼 밀고, End(꼭짓점)까지 뿔
-	void AddConeConnection(FLineBatcher& LineBatcher, const FVector& Start, const FVector& End, float Radius, const FVector4& Color)
-	{
-		const FVector Delta = End - Start;
-		if (Delta.Size() <= Radius)
-		{
-			return;
-		}
-		AddWireCone(LineBatcher, Start + Delta.Normalized() * Radius, End, Radius, Color);
-	}
 
 	bool IsNearlyEqual(const FVector& A, const FVector& B, float Tolerance = 1.0e-3f)
 	{
@@ -228,18 +144,6 @@ namespace
 		return Result;
 	}
 
-	// 에셋 키(폴더/이름.fbxbin)에서 폴더와 확장자를 뺀 이름. 창 제목에 보인다
-	FString GetDisplayName(const FString& AssetKey)
-	{
-		const size_t Slash = AssetKey.find_last_of("/\\");
-		FString Name = Slash == FString::npos ? AssetKey : AssetKey.substr(Slash + 1);
-		const size_t Dot = Name.find_last_of('.');
-		if (Dot != FString::npos && Dot > 0)
-		{
-			Name.resize(Dot);
-		}
-		return Name;
-	}
 }
 
 namespace
@@ -271,8 +175,7 @@ namespace
 }
 
 FSkeletalMeshEditor::FSkeletalMeshEditor(USkeletalMesh* InMesh, int32 InEditorId)
-	: Mesh(InMesh)
-	, EditorId(InEditorId)
+	: FPersonaAssetEditor(InMesh, InEditorId)
 	// ### 뒤가 ImGui 창 ID. 에셋 키로 두어 imgui.ini에 에셋별 마지막 위치 / 도킹이 저장되게 한다
 	// 같은 에셋은 Manager가 한 창만 열게 막고, 재임포트한 새 객체도 키가 같아 같은 자리에 열린다
 	, WindowTitle(std::format("{} - Skeletal Mesh Editor###SkeletalMeshEditor_{}", GetDisplayName(InMesh->GetPath()), InMesh->GetPath()))
@@ -280,24 +183,8 @@ FSkeletalMeshEditor::FSkeletalMeshEditor(USkeletalMesh* InMesh, int32 InEditorId
 	, ViewportPanelTitle(std::format("Viewport###SkeletalMeshViewport_{}", InMesh->GetPath()))
 	, DetailsPanelTitle(std::format("Details###SkeletalMeshDetails_{}", InMesh->GetPath()))
 {
-	// 자식 목록은 ParentIndex로 한 번만 만든다. 포즈(처음엔 Bind Pose)는 CreatePreviewScene에서 만드는 컴포넌트가 들고 있다
-	const FReferenceSkeleton& RefSkeleton = Mesh->RefSkeleton;
-	const int32 NumBones = RefSkeleton.GetNum();
-	BoneChildren.SetNum(NumBones);
-	for (int32 i = 0; i < NumBones; ++i)
-	{
-		const int32 Parent = RefSkeleton.RefBoneInfo[i].ParentIndex;
-		if (Parent < 0)
-		{
-			RootBones.Add(i);
-		}
-		else
-		{
-			BoneChildren[Parent].Add(i);
-		}
-	}
-
 	// 가중치가 0보다 큰 정점이 하나라도 있으면 그 본은 메시를 움직인다
+	const int32 NumBones = Mesh->RefSkeleton.GetNum();
 	BoneHasWeights.Init(0, NumBones);
 	const FSkinWeightData& SkinWeights = Mesh->GetSkinWeights();
 	for (int32 VertexIndex = 0; VertexIndex < SkinWeights.InfluenceBones.Num(); ++VertexIndex)
@@ -318,148 +205,24 @@ FSkeletalMeshEditor::FSkeletalMeshEditor(USkeletalMesh* InMesh, int32 InEditorId
 	ResetIcon = UAssetManager::Get().LoadTexture(EditorResourcePaths::ResetToDefaultIcon);
 	GizmoWorldIcon = UAssetManager::Get().LoadTexture(EditorResourcePaths::GizmoWorldIcon);
 	GizmoLocalIcon = UAssetManager::Get().LoadTexture(EditorResourcePaths::GizmoLocalIcon);
-
-	CreatePreviewScene();
-	SceneRadius = ComputeSceneRadius();
-	FocusOnMesh();
-}
-
-FSkeletalMeshEditor::~FSkeletalMeshEditor()
-{
-	// PIE 종료와 같은 순서. 액터는 월드가 지운다
-	// TODO: 렌더가 붙으면 GPU가 이 월드의 자원을 쓰는 중에 지우지 않는지 확인
-	if (PreviewWorld)
-	{
-		PreviewWorld->ClearWorld();
-		delete PreviewWorld;
-		PreviewWorld = nullptr;
-		FloorActor = nullptr;
-		PreviewActor = nullptr;
-		PreviewComponent = nullptr;
-	}
-}
-
-void FSkeletalMeshEditor::Tick(float DeltaTime)
-{
-	// Tick이 OnRender보다 먼저 돌기 때문에 지난 프레임의 가시성으로 판단한다 (1프레임 지연은 무시 가능)
-	if (!bIsVisible)
-	{
-		return;
-	}
-
-	// Editor 타입이라 게임 Tick 없이 Transform 갱신만 한다
-	PreviewWorld->Tick(DeltaTime);
-
-	// 포즈는 바뀔 때만 컴포넌트가 다시 계산한다 (SetBoneSpaceTransform)
-
-	// 렌더(RenderMultipleViewports)가 Tick 뒤에 오므로 여기서 타깃과 카메라를 맞춰 둔다
-	UpdateRenderTargets();
-	UpdatePreviewCamera();
-}
-
-void FSkeletalMeshEditor::UpdateRenderTargets()
-{
-	if (DesiredWidth == 0 || DesiredHeight == 0)
-	{
-		return;
-	}
-	if (DesiredWidth == TargetWidth && DesiredHeight == TargetHeight)
-	{
-		return;
-	}
-
-	// PIE 창 타깃과 같은 구성. Fog가 깊이를 읽으므로 깊이는 TYPELESS로 만든다
-	D3D11_TEXTURE2D_DESC Desc{};
-	Desc.Width = DesiredWidth;
-	Desc.Height = DesiredHeight;
-	Desc.MipLevels = 1;
-	Desc.ArraySize = 1;
-	Desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-	Desc.SampleDesc.Count = 1;
-	Desc.Usage = D3D11_USAGE_DEFAULT;
-	Desc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
-	ColorTarget = RenderCommand::CreateTexture2D(Desc);
-
-	Desc.Format = DXGI_FORMAT_R24G8_TYPELESS;
-	Desc.BindFlags = D3D11_BIND_DEPTH_STENCIL | D3D11_BIND_SHADER_RESOURCE;
-	DepthTarget = RenderCommand::CreateTexture2D(Desc);
-
-	Desc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
-	Desc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
-	HDRTarget = RenderCommand::CreateTexture2D(Desc);
-
-	RenderingInfo.ColorRenderTargets.Reset();
-	RenderingInfo.ViewportSetting.Width = DesiredWidth;
-	RenderingInfo.ViewportSetting.Height = DesiredHeight;
-	FRenderingDesc ColorDesc{};
-	ColorDesc.Texture = ColorTarget.get();
-	RenderingInfo.ColorRenderTargets.Add(ColorDesc);
-	RenderingInfo.DepthStencil.Texture = DepthTarget.get();
-
-	TargetWidth = DesiredWidth;
-	TargetHeight = DesiredHeight;
-	ViewportClient.SetViewRect({ 0.0f, 0.0f, static_cast<float>(TargetWidth), static_cast<float>(TargetHeight) });
-}
-
-FString FSkeletalMeshEditor::GetSelectedBoneName() const
-{
-	return SelectedBoneIndex >= 0 ? Mesh->RefSkeleton.RefBoneInfo[SelectedBoneIndex].Name : FString();
 }
 
 void FSkeletalMeshEditor::SelectBoneByName(const FString& BoneName)
 {
-	SelectedBoneIndex = BoneName.empty() ? -1 : Mesh->RefSkeleton.FindBoneIndex(BoneName);
+	FPersonaAssetEditor::SelectBoneByName(BoneName);
 	bRevealSelectedInTree = SelectedBoneIndex >= 0;
 	SyncBoneGizmoPivot();
 }
 
 const TArray<FTransform>& FSkeletalMeshEditor::GetBoneSpaceTransforms() const
 {
-	return PreviewComponent->GetBoneSpaceTransforms();
-}
-
-const TArray<FMatrix>& FSkeletalMeshEditor::GetComponentSpaceTransforms() const
-{
-	return PreviewComponent->GetComponentSpaceTransforms();
+	return PreviewScene->GetPreviewComponent()->GetBoneSpaceTransforms();
 }
 
 void FSkeletalMeshEditor::SetBoneSpaceTransform(int32 BoneIndex, const FTransform& Transform)
 {
 	// 컴포넌트가 바로 누적 + 스키닝하므로 같은 프레임에 그리는 본, 기즈모, 메시가 새 포즈를 쓴다
-	PreviewComponent->SetBoneLocalTransform(BoneIndex, Transform);
-}
-
-bool FSkeletalMeshEditor::IsAncestorOf(int32 Ancestor, int32 Bone) const
-{
-	const TArray<FMeshBoneInfo>& BoneInfo = Mesh->RefSkeleton.RefBoneInfo;
-	for (int32 Parent = BoneInfo[Bone].ParentIndex; Parent >= 0; Parent = BoneInfo[Parent].ParentIndex)
-	{
-		if (Parent == Ancestor)
-		{
-			return true;
-		}
-	}
-	return false;
-}
-
-bool FSkeletalMeshEditor::ShouldDrawBone(int32 BoneIndex) const
-{
-	switch (BoneDrawMode)
-	{
-	case EBoneDrawMode::All:
-		return true;
-	case EBoneDrawMode::Selected:
-		return BoneIndex == SelectedBoneIndex;
-	default:
-		return false;
-	}
-}
-
-FVector FSkeletalMeshEditor::GetBoneLocation(int32 BoneIndex) const
-{
-	// Row-vector 행렬이라 이동은 4번째 행
-	const FMatrix& M = GetComponentSpaceTransforms()[BoneIndex];
-	return FVector(M.M[3][0], M.M[3][1], M.M[3][2]);
+	PreviewScene->GetPreviewComponent()->SetBoneLocalTransform(BoneIndex, Transform);
 }
 
 FRotator FSkeletalMeshEditor::GetBoneRotation(int32 BoneIndex) const
@@ -553,72 +316,15 @@ FVector FSkeletalMeshEditor::GetBoneScale(int32 BoneIndex) const
 		FVector(M.M[2][0], M.M[2][1], M.M[2][2]).Size());
 }
 
-void FSkeletalMeshEditor::DrawBones(FLineBatcher& LineBatcher) const
-{
-	if (BoneDrawMode == EBoneDrawMode::None)
-	{
-		return;
-	}
-
-	// 프리뷰 메시는 월드 원점에 있으므로 Component 공간 = 월드 공간
-	const FVector ComponentOrigin(0.0f, 0.0f, 0.0f);
-
-	for (int32 BoneIndex = 0; BoneIndex < Mesh->RefSkeleton.GetNum(); ++BoneIndex)
-	{
-		if (!ShouldDrawBone(BoneIndex))
-		{
-			continue;
-		}
-
-		const bool bIsSelected = BoneIndex == SelectedBoneIndex;
-		const bool bIsAffected = SelectedBoneIndex >= 0 && IsAncestorOf(SelectedBoneIndex, BoneIndex);
-		const FVector4& BoneColor = bIsSelected ? SelectedBoneColor : (bIsAffected ? AffectedBoneColor : DefaultBoneColor);
-
-		// 구는 본 축 방향으로 (스케일은 뺀다)
-		const FMatrix& M = GetComponentSpaceTransforms()[BoneIndex];
-		const FVector AxisX = FVector(M.M[0][0], M.M[0][1], M.M[0][2]).Normalized();
-		const FVector AxisY = FVector(M.M[1][0], M.M[1][1], M.M[1][2]).Normalized();
-		const FVector AxisZ = FVector(M.M[2][0], M.M[2][1], M.M[2][2]).Normalized();
-		const FVector BoneLocation = GetBoneLocation(BoneIndex);
-		AddWireSphere(LineBatcher, BoneLocation, AxisX, AxisY, AxisZ, BoneDrawSize, BoneColor);
-
-		// 자식으로 가는 뿔. 양 끝을 구 반지름만큼 줄여 구와 겹치지 않게 한다
-		for (const int32 ChildIndex : BoneChildren[BoneIndex])
-		{
-			const FVector ChildLocation = GetBoneLocation(ChildIndex);
-			const FVector Delta = ChildLocation - BoneLocation;
-			if (Delta.Size() <= BoneDrawSize * 2.0f)
-			{
-				continue;
-			}
-			const FVector Offset = Delta.Normalized() * BoneDrawSize;
-			const FVector4& ChildColor = (!bIsSelected && ChildIndex == SelectedBoneIndex) ? ParentOfSelectedBoneColor : BoneColor;
-			AddWireCone(LineBatcher, BoneLocation + Offset, ChildLocation - Offset, BoneDrawSize, ChildColor);
-		}
-
-		if (Mesh->RefSkeleton.RefBoneInfo[BoneIndex].ParentIndex < 0)
-		{
-			AddConeConnection(LineBatcher, BoneLocation, ComponentOrigin, BoneDrawSize, RootConnectionColor);
-		}
-	}
-
-	// Selected 모드에서는 부모 본을 그리지 않으므로, 부모 → 선택 본 뿔을 따로 그린다
-	if (BoneDrawMode == EBoneDrawMode::Selected && SelectedBoneIndex >= 0)
-	{
-		const int32 ParentIndex = Mesh->RefSkeleton.RefBoneInfo[SelectedBoneIndex].ParentIndex;
-		if (ParentIndex >= 0)
-		{
-			AddConeConnection(LineBatcher, GetBoneLocation(ParentIndex), GetBoneLocation(SelectedBoneIndex), BoneDrawSize, ParentOfSelectedBoneColor);
-		}
-	}
-}
-
 int32 FSkeletalMeshEditor::PickBone(float ScreenX, float ScreenY) const
 {
+	const uint32 TargetWidth = PreviewScene->GetTargetWidth();
+	const uint32 TargetHeight = PreviewScene->GetTargetHeight();
 	if (TargetWidth == 0 || TargetHeight == 0)
 	{
 		return -1;
 	}
+	const FEditorViewportClient& ViewportClient = GetViewportClient();
 
 	// 언리얼 HitProxy 흉내: DrawBones가 그린 구와 뿔을 화면에 투영해, 그 모양 + 5px 안을 누르면 그 본이다
 	//  - 구: 관절 중심에서 (투영된 구 반지름 + 5px) 안
@@ -767,49 +473,6 @@ int32 FSkeletalMeshEditor::PickBone(float ScreenX, float ScreenY) const
 	return BestDirectBone >= 0 ? BestDirectBone : BestMarginBone;
 }
 
-void FSkeletalMeshEditor::FocusOnMesh()
-{
-	// Bind Pose 메시 높이의 가운데를 본다. 정점이 없으면 키 1.7m 기준
-	const TArray<FVertex>& Vertices = Mesh->GetMeshData().Vertices;
-	float MinZ = 0.0f;
-	float MaxZ = 1.7f;
-	if (Vertices.Num() > 0)
-	{
-		MinZ = FLT_MAX;
-		MaxZ = -FLT_MAX;
-		for (const FVertex& Vertex : Vertices)
-		{
-			MinZ = Vertex.Position.Z < MinZ ? Vertex.Position.Z : MinZ;
-			MaxZ = Vertex.Position.Z > MaxZ ? Vertex.Position.Z : MaxZ;
-		}
-	}
-
-	const float Height = MaxZ - MinZ > 0.01f ? MaxZ - MinZ : 0.01f;
-	OrbitTarget = FVector(0.0f, 0.0f, (MinZ + MaxZ) * 0.5f);
-	// 임포트한 메시는 언리얼 관례대로 +Y가 정면이라 +Y 쪽에서 15도 내려다본다
-	// 언리얼 SAnimationEditorViewport의 초기 카메라(EditorViewportDefs::DefaultPerspectiveViewRotation(-15, -90, 0))와 같음
-	OrbitYaw = -90.0f;
-	OrbitPitch = -15.0f;
-	OrbitDistance = Height * 2.0f;
-}
-
-void FSkeletalMeshEditor::UpdatePreviewCamera()
-{
-	// 구면좌표 → 바라보는 방향. 카메라 위치 계산에 쓴다
-	const float YawRad = OrbitYaw * (3.14159265f / 180.0f);
-	const float PitchRad = OrbitPitch * (3.14159265f / 180.0f);
-	const FVector Forward(std::cos(PitchRad) * std::cos(YawRad), std::cos(PitchRad) * std::sin(YawRad), std::sin(PitchRad));
-	const FVector Location = OrbitTarget - Forward * OrbitDistance;
-
-	// 이 엔진의 FRotator는 Pitch +가 아래라서 부호를 뒤집는다
-	const FQuat Rotation = FRotator(-OrbitPitch, OrbitYaw, 0.0f).Quaternion();
-
-	// 카메라 → 오빗 대상 → 원점 → 장면 끝까지 더한 값. 어떤 줌과 패닝에서도 장면에서 가장 먼 점이 이 안에 든다
-	const float FarClip = OrbitDistance + OrbitTarget.Size() + SceneRadius;
-	const FCameraProjection Projection{ EProjectionMode::Perspective, 60.0f, 10.0f, 0.01f, FarClip };
-	ViewportClient.SetCameraOverride(Location, Forward, Projection, &Rotation);
-}
-
 void FSkeletalMeshEditor::HandleViewportInput()
 {
 	const ImGuiIO& IO = ImGui::GetIO();
@@ -820,6 +483,9 @@ void FSkeletalMeshEditor::HandleViewportInput()
 	SyncBoneGizmoPivot();
 	if (ImGui::IsItemHovered() || BoneGizmo.IsUsing())
 	{
+		FEditorViewportClient& ViewportClient = PreviewScene->GetViewportClient();
+		const uint32 TargetWidth = PreviewScene->GetTargetWidth();
+		const uint32 TargetHeight = PreviewScene->GetTargetHeight();
 		// 누르는 순간에만 드래그를 시작한다. Alt + 좌클릭은 오빗
 		const bool bGizmoMouseDown = BoneGizmo.IsUsing()
 			? ImGui::IsMouseDown(ImGuiMouseButton_Left)
@@ -838,67 +504,8 @@ void FSkeletalMeshEditor::HandleViewportInput()
 		bGizmoUsedThisClick = bGizmoUsedThisClick || BoneGizmo.IsUsing();
 	}
 
-	// 이미지 위에서 누른 채 드래그 중일 때만
-	if (ImGui::IsItemActive())
-	{
-		// 언리얼처럼 Alt + 좌클릭만 오빗. 그냥 좌클릭은 본 선택 / 기즈모용으로 남겨 둔다
-		if (IO.KeyAlt && ImGui::IsMouseDown(ImGuiMouseButton_Left) && !BoneGizmo.IsUsing())
-		{
-			// 뒤집힌 상태에서는 화면 좌우도 반대이므로 Yaw 입력을 반전
-			const bool bUpsideDown = std::cos(OrbitPitch * (3.14159265f / 180.0f)) < 0.0f;
-			OrbitYaw += IO.MouseDelta.x * 0.3f * (bUpsideDown ? -1.0f : 1.0f);
-			OrbitPitch -= IO.MouseDelta.y * 0.3f;
-			// 계속 돌려도 값이 커지지 않게 -180 ~ 180으로 감싼다
-			OrbitPitch = std::remainder(OrbitPitch, 360.0f);
-		}
-		else if (ImGui::IsMouseDown(ImGuiMouseButton_Middle))
-		{
-			// 화면 기준 오른쪽, 위쪽으로 대상 점을 옮긴다. 멀리 있을수록 크게 움직인다
-			const float YawRad = OrbitYaw * (3.14159265f / 180.0f);
-			const float PitchRad = OrbitPitch * (3.14159265f / 180.0f);
-			const FVector Right(-std::sin(YawRad), std::cos(YawRad), 0.0f);
-			const FVector Up(-std::sin(PitchRad) * std::cos(YawRad), -std::sin(PitchRad) * std::sin(YawRad), std::cos(PitchRad));
-			const float PanSpeed = OrbitDistance * 0.02f;
-			OrbitTarget = OrbitTarget - Right * (IO.MouseDelta.x * PanSpeed) + Up * (IO.MouseDelta.y * PanSpeed);
-		}
-		else if (ImGui::IsMouseDown(ImGuiMouseButton_Right))
-		{
-			const auto CalcForward = [this]()
-			{
-				const float YawRad = OrbitYaw * (3.14159265f / 180.0f);
-				const float PitchRad = OrbitPitch * (3.14159265f / 180.0f);
-				return FVector(std::cos(PitchRad) * std::cos(YawRad), std::cos(PitchRad) * std::sin(YawRad), std::sin(PitchRad));
-			};
-
-			// 제자리 회전: 카메라 위치는 고정하고 방향만 돌린 뒤, 그 앞쪽으로 Target을 다시 잡는다
-			FVector Location = OrbitTarget - CalcForward() * OrbitDistance;
-			// 오빗으로 뒤집힌 상태였다면, 같은 방향을 보는 바로 선 값으로 바꾼다 (Pitch' = 180 - Pitch, Yaw' = Yaw + 180)
-			// 언리얼 Fly 카메라처럼 우클릭 회전은 뒤집히지 않게 ±89로 막는다
-			if (std::cos(OrbitPitch * (3.14159265f / 180.0f)) < 0.0f)
-			{
-				OrbitPitch = std::remainder(180.0f - OrbitPitch, 360.0f);
-				OrbitYaw += 180.0f;
-			}
-			OrbitYaw += IO.MouseDelta.x * 0.3f;
-			OrbitPitch -= IO.MouseDelta.y * 0.3f;
-			OrbitPitch = OrbitPitch > 89.0f ? 89.0f : (OrbitPitch < -89.0f ? -89.0f : OrbitPitch);
-			const FVector Forward = CalcForward();
-
-			// WASD: 바라보는 방향 기준 앞뒤 / 좌우, QE: 월드 위아래 (언리얼과 동일)
-			const float YawRad = OrbitYaw * (3.14159265f / 180.0f);
-			const FVector Right(-std::sin(YawRad), std::cos(YawRad), 0.0f);
-			const float Axis[3] = {
-				(ImGui::IsKeyDown(ImGuiKey_W) ? 1.0f : 0.0f) - (ImGui::IsKeyDown(ImGuiKey_S) ? 1.0f : 0.0f),
-				(ImGui::IsKeyDown(ImGuiKey_D) ? 1.0f : 0.0f) - (ImGui::IsKeyDown(ImGuiKey_A) ? 1.0f : 0.0f),
-				(ImGui::IsKeyDown(ImGuiKey_E) ? 1.0f : 0.0f) - (ImGui::IsKeyDown(ImGuiKey_Q) ? 1.0f : 0.0f)
-			};
-			// 메시 크기에 맞춰 1초에 오빗 거리만큼 이동
-			const float MoveSpeed = OrbitDistance * IO.DeltaTime;
-			Location = Location + (Forward * Axis[0] + Right * Axis[1] + FVector(0.0f, 0.0f, 1.0f) * Axis[2]) * MoveSpeed;
-
-			OrbitTarget = Location + Forward * OrbitDistance;
-		}
-	}
+	// 기즈모 드래그 중에는 오빗하지 않는다
+	PreviewScene->HandleCameraInput(!BoneGizmo.IsUsing());
 
 	// 선택. 빈 곳이면 선택 해제. 기즈모를 누른 클릭은 제외
 	const float DragThresholdSq = IO.MouseDragThreshold * IO.MouseDragThreshold;
@@ -913,82 +520,6 @@ void FSkeletalMeshEditor::HandleViewportInput()
 	{
 		bGizmoUsedThisClick = false;
 	}
-
-	if (ImGui::IsItemHovered())
-	{
-
-		if (IO.MouseWheel != 0.0f)
-		{
-			// 한 칸마다 10%씩. 대상을 뚫고 지나가지 않게 최소 거리 유지
-			OrbitDistance *= std::pow(0.9f, IO.MouseWheel);
-			OrbitDistance = OrbitDistance < 0.1f ? 0.1f : OrbitDistance;
-		}
-		if (ImGui::IsKeyPressed(ImGuiKey_F))
-		{
-			FocusOnMesh();
-		}
-	}
-}
-
-void FSkeletalMeshEditor::CreatePreviewScene()
-{
-	// 게임 Tick이 돌지 않는 Editor 타입
-	PreviewWorld = UWorld::CreateWorld(EWorldType::Editor, false);
-
-	// -X 방향으로 40도 내려 비춘다.
-	const FTransform LightTransform(FRotator(40.0f, 180.0f, 0.0f), FVector(0.0f, 0.0f, 3.0f));
-	ADirectionalLightActor* DirectionalLight = PreviewWorld->SpawnActor<ADirectionalLightActor>(NAME_None, &LightTransform);
-	// 그림자 맵 한 장으로는 메시 근처가 거칠어서 가까운 쪽에 해상도를 몰아준다. 이름과 달리 Directional 컴포넌트를 돌려준다
-	DirectionalLight->GetPointLightComponent()->SetCSMEnabled(true);
-
-	// 그늘진 면도 보이게 고른 환경광 (언리얼 프리뷰 씬의 Sky Light). 아이콘이 메시와 겹치지 않게 라이트와 같은 높이에 둔다
-	// 기본 Intensity 1은 그늘이 거의 없어 낮춘다
-	const FTransform SkyLightTransform(FRotator(0.0f, 0.0f, 0.0f), FVector(0.0f, 0.0f, 3.0f));
-	ASkyLightActor* SkyLight = PreviewWorld->SpawnActor<ASkyLightActor>(NAME_None, &SkyLightTransform);
-	SkyLight->GetSkyLightComponent()->SetIntensity(0.3f);
-
-	// 윗면이 바닥 높이에 오도록 두께 절반만큼 내린다
-	const FTransform FloorTransform(FRotator(0.0f, 0.0f, 0.0f), FVector(0.0f, 0.0f, ComputeFloorHeight() - FloorThickness * 0.5f), FVector(FloorSize, FloorSize, FloorThickness));
-	FloorActor = PreviewWorld->SpawnActor<AStaticMeshActor>(NAME_None, &FloorTransform);
-	// AStaticMeshActor::SetPrimitiveType은 비어 있어서 메시를 직접 지정한다
-	FloorActor->GetStaticMeshComponent()->SetStaticMesh(UAssetManager::GetAssetByPath<UStaticMesh>("Cube"));
-	FloorActor->GetStaticMeshComponent()->SetVisible(bShowFloor);
-
-	// 언리얼 PersonaToolkit처럼 빈 액터를 원점에 두고 스켈레탈 메시 컴포넌트를 루트로 붙인다
-	// 액터에 루트가 없으면 AddComponent가 루트로 삼는다. SetSkeletalMesh가 포즈를 Bind Pose로 초기화한다
-	PreviewActor = PreviewWorld->SpawnActor<AActor>(NAME_None);
-	PreviewComponent = Cast<USkeletalMeshComponent>(PreviewActor->AddComponent(USkeletalMeshComponent::StaticClass(), FName("PreviewMesh")));
-	PreviewComponent->SetSkeletalMesh(Mesh);
-	PreviewComponent->SetVisible(bShowMesh);
-}
-
-float FSkeletalMeshEditor::ComputeFloorHeight() const
-{
-	const TArray<FVertex>& Vertices = Mesh->GetMeshData().Vertices;
-	if (Vertices.Num() == 0)
-	{
-		return 0.0f;
-	}
-
-	float MinZ = FLT_MAX;
-	for (const FVertex& Vertex : Vertices)
-	{
-		MinZ = Vertex.Position.Z < MinZ ? Vertex.Position.Z : MinZ;
-	}
-	return MinZ;
-}
-
-float FSkeletalMeshEditor::ComputeSceneRadius() const
-{
-	// 바닥 아랫면 귀퉁이까지의 거리로 시작한다
-	const float HalfFloor = FloorSize * 0.5f;
-	float Radius = FVector(HalfFloor, HalfFloor, ComputeFloorHeight() - FloorThickness).Size();
-	for (const FVertex& Vertex : Mesh->GetMeshData().Vertices)
-	{
-		const float Distance = Vertex.Position.Size();
-		Radius = Distance > Radius ? Distance : Radius;
-	}
-	return Radius;
 }
 
 void FSkeletalMeshEditor::OnRender()
@@ -1130,68 +661,6 @@ void FSkeletalMeshEditor::DrawBoneTreeNode(int32 BoneIndex)
 	}
 }
 
-void FSkeletalMeshEditor::DrawViewport()
-{
-	// 툴바: 표시 옵션을 Show 메뉴 하나로 (언리얼 Show / Character 메뉴). 기즈모 모드는 Space로 순환
-	if (ImGui::Button("Show"))
-	{
-		ImGui::OpenPopup("##ViewportShowMenu");
-	}
-	if (ImGui::BeginPopup("##ViewportShowMenu"))
-	{
-		if (ImGui::MenuItem("Mesh", nullptr, &bShowMesh))
-		{
-			PreviewComponent->SetVisible(bShowMesh);
-		}
-		if (ImGui::MenuItem("Floor", nullptr, &bShowFloor))
-		{
-			FloorActor->GetStaticMeshComponent()->SetVisible(bShowFloor);
-		}
-		ImGui::SeparatorText("Bones");
-		if (ImGui::MenuItem("None", nullptr, BoneDrawMode == EBoneDrawMode::None))
-		{
-			BoneDrawMode = EBoneDrawMode::None;
-		}
-		if (ImGui::MenuItem("Selected", nullptr, BoneDrawMode == EBoneDrawMode::Selected))
-		{
-			BoneDrawMode = EBoneDrawMode::Selected;
-		}
-		if (ImGui::MenuItem("All", nullptr, BoneDrawMode == EBoneDrawMode::All))
-		{
-			BoneDrawMode = EBoneDrawMode::All;
-		}
-		ImGui::EndPopup();
-	}
-
-	// 남은 영역 크기를 기록해 두면 다음 Tick에서 타깃을 맞춘다 (1프레임 지연)
-	const ImVec2 Avail = ImGui::GetContentRegionAvail();
-	DesiredWidth = Avail.x > 1.0f ? static_cast<uint32>(Avail.x) : 0;
-	DesiredHeight = Avail.y > 1.0f ? static_cast<uint32>(Avail.y) : 0;
-
-	if (ColorTarget)
-	{
-		const ImVec2 ImageSize(static_cast<float>(TargetWidth), static_cast<float>(TargetHeight));
-		const ImVec2 ImagePos = ImGui::GetCursorScreenPos();
-		ImGui::Image((ImTextureID)ColorTarget->GetSRV(), ImageSize);
-
-		// 왼쪽 위 통계 (레벨 뷰포트 stat 표시처럼 이미지 위에 겹쳐 그린다)
-		const FString Stats = std::format("Bones: {}\nVertices: {}\nTriangles: {}",
-			Mesh->RefSkeleton.GetNum(), Mesh->GetMeshData().Vertices.Num(), Mesh->GetMeshData().Indices.Num() / 3);
-		const ImVec2 StatsPos(ImagePos.x + EditorUIScale::Px(8.0f), ImagePos.y + EditorUIScale::Px(8.0f));
-		const ImVec2 StatsSize = ImGui::CalcTextSize(Stats.c_str());
-		ImDrawList* DrawList = ImGui::GetWindowDrawList();
-		DrawList->AddRectFilled(ImVec2(StatsPos.x - EditorUIScale::Px(4.0f), StatsPos.y - EditorUIScale::Px(4.0f)),
-			ImVec2(StatsPos.x + StatsSize.x + EditorUIScale::Px(4.0f), StatsPos.y + StatsSize.y + EditorUIScale::Px(4.0f)), IM_COL32(0, 0, 0, 110), EditorUIScale::Px(3.0f));
-		DrawList->AddText(StatsPos, IM_COL32(255, 255, 255, 230), Stats.c_str());
-
-		// Image는 입력을 받지 않으므로 같은 자리에 같은 크기의 투명 버튼을 올려 마우스 입력을 받는다
-		ImGui::SetCursorScreenPos(ImagePos);
-		ImGui::InvisibleButton("##PreviewViewportInput", ImageSize,
-			ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight | ImGuiButtonFlags_MouseButtonMiddle);
-		HandleViewportInput();
-	}
-}
-
 // B8에서 Transform 편집으로 바꾼다.
 void FSkeletalMeshEditor::DrawDetails()
 {
@@ -1224,7 +693,7 @@ void FSkeletalMeshEditor::DrawDetails()
 	ImGui::SameLine();
 	if (ImGui::Button("Reset All"))
 	{
-		PreviewComponent->ResetToRefPose();
+		PreviewScene->GetPreviewComponent()->ResetToRefPose();
 	}
 }
 

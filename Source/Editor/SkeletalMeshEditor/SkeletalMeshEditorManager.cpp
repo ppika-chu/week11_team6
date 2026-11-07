@@ -108,7 +108,7 @@ bool FSkeletalMeshEditorManager::HasFocusedEditor() const
 	return false;
 }
 
-void FSkeletalMeshEditorManager::GetPreviewsToRender(TArray<const FSkeletalMeshEditor*>& OutEditors) const
+void FSkeletalMeshEditorManager::GetPreviewsToRender(TArray<const FPersonaAssetEditor*>& OutEditors) const
 {
 	OutEditors.Reset();
 

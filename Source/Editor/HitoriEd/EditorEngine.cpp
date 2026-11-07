@@ -694,7 +694,7 @@ void UEditorEngine::RenderMultipleViewports()
 	}
 
 	// Skeletal Mesh Editor 프리뷰도 같은 그림자 작업에 넣으므로 그림자보다 먼저 준비한다.
-	TArray<const FSkeletalMeshEditor*> Previews;
+	TArray<const FPersonaAssetEditor*> Previews;
 	TArray<FSceneView> PreviewViews;
 	PrepareSkeletalMeshPreviews(Previews, PreviewViews);
 
@@ -784,11 +784,11 @@ void UEditorEngine::RenderMultipleViewports()
 	RenderSkeletalMeshPreviews(Previews, PreviewViews);
 }
 
-void UEditorEngine::PrepareSkeletalMeshPreviews(TArray<const FSkeletalMeshEditor*>& OutPreviews, TArray<FSceneView>& OutViews)
+void UEditorEngine::PrepareSkeletalMeshPreviews(TArray<const FPersonaAssetEditor*>& OutPreviews, TArray<FSceneView>& OutViews)
 {
 	SkeletalMeshEditorManager->GetPreviewsToRender(OutPreviews);
 
-	for (const FSkeletalMeshEditor* Preview : OutPreviews)
+	for (const FPersonaAssetEditor* Preview : OutPreviews)
 	{
 		// 그림자 작업이 최신 Transform을 쓰도록 먼저 반영한다
 		SceneRenderer->BeginRenderViews(*Preview->GetPreviewWorld());
@@ -808,11 +808,11 @@ void UEditorEngine::PrepareSkeletalMeshPreviews(TArray<const FSkeletalMeshEditor
 	}
 }
 
-void UEditorEngine::RenderSkeletalMeshPreviews(const TArray<const FSkeletalMeshEditor*>& Previews, const TArray<FSceneView>& Views)
+void UEditorEngine::RenderSkeletalMeshPreviews(const TArray<const FPersonaAssetEditor*>& Previews, const TArray<FSceneView>& Views)
 {
 	for (int32 PreviewIndex = 0; PreviewIndex < Previews.Num(); ++PreviewIndex)
 	{
-		const FSkeletalMeshEditor* Preview = Previews[PreviewIndex];
+		const FPersonaAssetEditor* Preview = Previews[PreviewIndex];
 		const FSceneView& View = Views[PreviewIndex];
 		UWorld& PreviewWorld = *Preview->GetPreviewWorld();
 		const FEditorViewportClient& Client = Preview->GetViewportClient();
@@ -836,13 +836,13 @@ void UEditorEngine::RenderSkeletalMeshPreviews(const TArray<const FSkeletalMeshE
 		RenderCommand::EndRenderPass(BoneOverlayInfo);
 
 		// 기즈모는 본보다 위. 레벨 View처럼 깊이를 비워 기즈모끼리만 가리게 한다
-		if (Preview->GetBoneGizmo().HasPivot())
+		if (const FGizmo* PreviewGizmo = Preview->GetGizmo(); PreviewGizmo && PreviewGizmo->HasPivot())
 		{
 			FRenderingInfo GizmoInfo = PreviewRenderingInfo;
 			GizmoInfo.ColorRenderTargets[0].LoadOp = ERenderTargetLoadOp::Load;
 			GizmoInfo.DepthStencil.LoadOp = ERenderTargetLoadOp::Clear;
 			RenderCommand::BeginRenderPass(GizmoInfo);
-			GizmoRenderer->OnRender(Preview->GetBoneGizmo(), View.ViewProjection, Client.GetViewLocation(), Client.IsOrthographic());
+			GizmoRenderer->OnRender(*PreviewGizmo, View.ViewProjection, Client.GetViewLocation(), Client.IsOrthographic());
 			RenderCommand::EndRenderPass(GizmoInfo);
 		}
 	}
