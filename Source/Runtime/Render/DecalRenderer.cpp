@@ -13,25 +13,20 @@
 
 bool FDecalRenderer::Init()
 {
-	// UberLit처럼 같은 파일을 조명 모델 매크로별로 따로 컴파일한다.
-	static const D3D_SHADER_MACRO Unlit[] = { { "LIGHTING_MODEL_UNLIT", "1" }, { nullptr, nullptr } };
-	static const D3D_SHADER_MACRO Lambert[] = { { "LIGHTING_MODEL_LAMBERT", "1" }, { nullptr, nullptr } };
-	static const D3D_SHADER_MACRO BlinnPhong[] = { { "LIGHTING_MODEL_BLINN_PHONG", "1" }, { nullptr, nullptr } };
-
 	const FString Path = "Resources/Shader/DecalShader.hlsl";
-	FShaderProgram* LambertShader = FRenderResourceManager::FindOrLoadShaderProgram(Path, Lambert);
-	Shaders[static_cast<int32>(EViewMode::Lit_Gouraud)] = LambertShader;
-	Shaders[static_cast<int32>(EViewMode::Lit_Lambert)] = LambertShader;
-	Shaders[static_cast<int32>(EViewMode::Lit_BlinnPhong)] = FRenderResourceManager::FindOrLoadShaderProgram(Path, BlinnPhong);
-	Shaders[static_cast<int32>(EViewMode::Lit)] = Shaders[static_cast<int32>(EViewMode::Lit_BlinnPhong)];
-	Shaders[static_cast<int32>(EViewMode::Unlit)] = FRenderResourceManager::FindOrLoadShaderProgram(Path, Unlit);
-	if (!LambertShader)
+	for (const auto& VertexFactory : GVertexFactoryTypes)
 	{
-		HTR_LOG(Error, "[Decal] shader not found");
-		return false;
+		auto& Row = Shaders[static_cast<int32>(VertexFactory.Type)];
+		FShaderProgram* Lambert = FRenderResourceManager::FindOrLoadShaderProgram(Path, "LIGHTING_MODEL_LAMBERT", VertexFactory.Type);
+		Row[static_cast<int32>(EViewMode::Lit_Gouraud)] = Lambert;
+		Row[static_cast<int32>(EViewMode::Lit_Lambert)] = Lambert;
+		Row[static_cast<int32>(EViewMode::Lit_BlinnPhong)] = FRenderResourceManager::FindOrLoadShaderProgram(Path, "LIGHTING_MODEL_BLINN_PHONG", VertexFactory.Type);
+		Row[static_cast<int32>(EViewMode::Lit)] = Row[static_cast<int32>(EViewMode::Lit_BlinnPhong)];
+		Row[static_cast<int32>(EViewMode::Unlit)] = FRenderResourceManager::FindOrLoadShaderProgram(Path, "LIGHTING_MODEL_UNLIT", VertexFactory.Type);
 	}
 
 	ConstantBuffer = RenderCommand::CreateConstantBuffer(sizeof(FDecalConstants));
+	PrimitiveConstantBuffer = RenderCommand::CreateConstantBuffer(sizeof(FPerObjectConstants));
 
 	PipelineState.Topology = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 	PipelineState.RasterizerState = ERasterizerState::DecalDepthBias;
@@ -61,13 +56,18 @@ void FDecalRenderer::OnRender(const FScene& Scene, EViewMode ViewMode, const FFr
 {
 	SCOPE_CYCLE_COUNTER(DecalStats::STAT_PassCPU);
 	FStatRegistry::AddCounter(DecalStats::STAT_SceneDecals, Scene.Decals.Num());
+
 	const int32 ModeIndex = static_cast<int32>(ViewMode);
-	FShaderProgram* Shader = ModeIndex >= 0 && ModeIndex < static_cast<int32>(EViewMode::Count) ? Shaders[ModeIndex] : nullptr;
-	if (Scene.Decals.IsEmpty() || !Shader)
+	if (Scene.Decals.IsEmpty() || ModeIndex < 0 || ModeIndex >= static_cast<int32>(EViewMode::Count))
 	{
 		return;
 	}
-	PipelineState.Shader = Shader;
+	FShaderProgram* DefaultShader = Shaders[static_cast<int32>(EVertexFactoryType::Local)][ModeIndex];
+	if (!DefaultShader)
+	{
+		return;
+	}
+	PipelineState.Shader = DefaultShader;
 
 	// Additive(빛)는 맨 뒤에 그린다. 빛을 먼저 더하면 그 위의 Alpha Blend 데칼이 빛을 덮는다.
 	// Additive끼리는 더하는 순서가 결과를 바꾸지 않는다.
@@ -93,6 +93,8 @@ void FDecalRenderer::OnRender(const FScene& Scene, EViewMode ViewMode, const FFr
 
 	bool bPipelineBound = false;
 	EBlendState CurrentBlend = PipelineState.BlendState;
+	FShaderProgram* BoundShader = nullptr;
+	const FVertexFactory* BoundVertexFactory = nullptr;
 	for (UDecalComponent* Decal : SortedDecals)
 	{
 		UMaterial* Material = Decal->GetDecalMaterial();
@@ -129,18 +131,15 @@ void FDecalRenderer::OnRender(const FScene& Scene, EViewMode ViewMode, const FFr
 		if (!bPipelineBound)
 		{
 			RenderCommand::BindPipelineState(PipelineState);
+			BoundShader = DefaultShader;
 			RenderCommand::BindSamplerState(0, ESamplerState::LinearClamp, EShaderBindFlagBits::Pixel);
 			RenderCommand::BindConstantBuffer(3, ConstantBuffer.get(), EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel);
+			RenderCommand::BindConstantBuffer(2, PrimitiveConstantBuffer.get(), EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel);
 			bPipelineBound = true;
 		}
 
 		const EViewMode MaterialMode = ResolveMaterialViewMode(ViewMode, Material->ShadingModel);
-		if (FShaderProgram* MaterialShader = Shaders[static_cast<int32>(MaterialMode)]; MaterialShader && MaterialShader != Shader)
-		{
-			RenderCommand::BindShaderProgram(MaterialShader);
-			Shader = MaterialShader;
-		}
-
+		const int32 MaterialModeIndex = static_cast<int32>(MaterialMode);
 		const bool bAdditive = Material->BlendState == EBlendState::Additive;
 		const EBlendState Blend = bAdditive ? EBlendState::Additive : EBlendState::AlphaBlend;
 		if (Blend != CurrentBlend)
@@ -173,17 +172,40 @@ void FDecalRenderer::OnRender(const FScene& Scene, EViewMode ViewMode, const FFr
 		Constants.SpecularFactor = Material->SpecularFactor;
 		Constants.EmissiveColor = Material->EmissiveColor;
 		Constants.EmissiveFactor = Material->EmissiveFactor;
+		RenderCommand::UpdateBufferData(ConstantBuffer.get(), &Constants, sizeof(Constants));
 
 		for (FPrimitiveSceneProxy* Receiver : Receivers)
 		{
-			UStaticMesh* Mesh = Receiver->GetComponent()->GetRenderMesh();
+			ReceiverPackets.Reset();
+			Receiver->GetMeshPackets(ReceiverPackets, 0);
+			if (ReceiverPackets.IsEmpty())
+			{
+				continue;
+			}
+			const FVertexFactory& VertexFactory = *ReceiverPackets[0].VertexFactory;
 
-			Constants.World = Receiver->GetLocalToWorld();
-			// 노멀은 (World^-1)^T로 옮긴다. 프록시가 역행렬을 들고 있으니 전치만 한다.
-			Constants.WorldInverseTranspose = Receiver->GetWorldToLocal().GetTransposed();
-			Constants.ReceiveShadow = Receiver->IsShadowReceiver() ? 1u : 0u;
-			RenderCommand::UpdateBufferData(ConstantBuffer.get(), &Constants, sizeof(Constants));
-			RenderCommand::BindVertexBuffer(Mesh->GetVertexBuffer(0));
+			FShaderProgram* ReceiverShader = Shaders[static_cast<int32>(VertexFactory.Type)][MaterialModeIndex];
+			if (!ReceiverShader)
+			{
+				continue;
+			}
+			if (ReceiverShader != BoundShader)
+			{
+				RenderCommand::BindShaderProgram(ReceiverShader);
+				BoundShader = ReceiverShader;
+			}
+			if (&VertexFactory != BoundVertexFactory)
+			{
+				RenderCommand::BindVertexFactory(VertexFactory);
+				BoundVertexFactory = &VertexFactory;
+			}
+
+			const FPerObjectConstants Primitive{
+				.World = Receiver->GetLocalToWorld(),
+				.NormalMatrix = Receiver->GetWorldToLocal().GetTransposed(),
+				.ReceiveShadow = Receiver->IsShadowReceiver() ? 1u : 0u,
+			};
+			RenderCommand::UpdateBufferData(PrimitiveConstantBuffer.get(), &Primitive, sizeof(Primitive));
 
 			// OBBTree로 데칼과 겹치는 삼각형만 골라 그린다. 삼각형 BVH가 없는 메시는 통째로 그린다.
 			TriangleIndices.Reset();
@@ -212,11 +234,14 @@ void FDecalRenderer::OnRender(const FScene& Scene, EViewMode ViewMode, const FFr
 			}
 			else
 			{
-				FIndexBuffer* IndexBuffer = Mesh->GetIndexBuffer(0);
-				RenderCommand::BindIndexBuffer(IndexBuffer);
-				RenderCommand::DrawIndexed(IndexBuffer->GetIndexCount());
-				FStatRegistry::AddCounter(DecalStats::STAT_DrawCalls);
-				FStatRegistry::AddCounter(DecalStats::STAT_Triangles, IndexBuffer->GetIndexCount() / 3);
+				for (const FRenderPacket& Packet : ReceiverPackets)
+				{
+					const uint32 IndexCount = Packet.IndexCount ? Packet.IndexCount : Packet.IndexBuffer->GetIndexCount();
+					RenderCommand::BindIndexBuffer(Packet.IndexBuffer);
+					RenderCommand::DrawIndexed(IndexCount, Packet.StartIndex);
+					FStatRegistry::AddCounter(DecalStats::STAT_DrawCalls);
+					FStatRegistry::AddCounter(DecalStats::STAT_Triangles, IndexCount / 3);
+				}
 			}
 		}
 	}

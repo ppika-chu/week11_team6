@@ -1,4 +1,6 @@
 #pragma pack_matrix(row_major)
+
+#include "VertexFactory.hlsli"
 #include "ColorSpace.hlsli"
 // ViewProjection·CameraWorldPos(b0)와 라이트·그림자 리소스는 Base Pass가 묶어 둔 것을 그대로 쓴다.
 #include "LightingCommon.hlsli"
@@ -7,14 +9,12 @@
 // DecalRenderer.h의 FDecalConstants와 바이트 단위로 같아야 한다.
 cbuffer DecalConstants : register(b3)
 {
-    matrix World; // 받는 메시의 월드 행렬
-    matrix WorldInverseTranspose;
     matrix DecalVP; // UDecalComponent::GetDecalViewProjection(): 월드 → 데칼
     float4 DecalColor; // 선형 머티리얼 DiffuseOrFactor × 선형 컴포넌트 DecalColor
     float FadeAlpha; // Fade In/Out 결과 (0~1)
     float bAdditive; // 1이면 One/One 블렌드용으로 색에 알파를 미리 곱한다 (Fake Spot Light)
     float Shininess;
-    uint ReceiveShadow;
+    uint DecalPadding;
     float3 SpecularColor;
     float SpecularFactor;
     float3 EmissiveColor;
@@ -25,15 +25,6 @@ Texture2D DecalTexture : register(t0);
 Texture2D DecalNormalTexture : register(t1);
 SamplerState DecalSampler : register(s0); // LinearClamp
 
-struct VS_INPUT
-{
-    float3 position : POSITION;
-    float3 normal : NORMAL;
-    float4 tangent : TANGENT;
-    float2 uv : TEXCOORD;
-    float4 color : COLOR;
-};
-
 struct PS_INPUT
 {
     float4 position : SV_POSITION;
@@ -42,16 +33,17 @@ struct PS_INPUT
     float3 normal : NORMAL;
 };
 
-PS_INPUT mainVS(VS_INPUT input)
+PS_INPUT mainVS(FVertexFactoryInput Input)
 {
-    PS_INPUT output;
-    
-    const float4 worldPosition = mul(float4(input.position, 1.0f), World);
-    output.position = mul(worldPosition, ViewProjection);
-    output.decalPosition = mul(worldPosition, DecalVP).xyz;
-    output.worldPosition = worldPosition.xyz;
-    output.normal = mul(float4(input.normal, 0.0f), WorldInverseTranspose).xyz;
-    return output;
+    const FVertexFactoryIntermediates VFIntermediates = GetVertexFactoryIntermediates(Input);
+    const float4 WorldPosition = VertexFactoryGetWorldPosition(Input, VFIntermediates);
+
+    PS_INPUT Output;
+    Output.position = mul(WorldPosition, ViewProjection);
+    Output.decalPosition = mul(WorldPosition, DecalVP).xyz;
+    Output.worldPosition = WorldPosition.xyz;
+    Output.normal = VertexFactoryGetWorldNormal(Input, VFIntermediates);
+    return Output;
 }
 
 #if !LIGHTING_MODEL_UNLIT

@@ -32,12 +32,6 @@ void FOutlineRenderer::Init(FRenderer* InRenderer)
 	PrimitiveConstantBuffer = RenderCommand::CreateConstantBuffer(sizeof(FPerObjectConstants));
 }
 
-// 외부에서 지정한 Mesh 참조를 저장한다.
-void FOutlineRenderer::SetMesh(UStaticMesh* InMesh)
-{
-	Mesh = InMesh;
-}
-
 // 카메라 거리 대신 View별 픽셀 크기와 고정 확장량으로 선택 Outline을 그린다.
 void FOutlineRenderer::OnRender(const FOutline& InOutline, const FMatrix& InViewProj, const FViewportSettings& Viewport)
 {

@@ -1041,14 +1041,18 @@ void UEditorEngine::RenderOverlayPass(const int32 ViewIndex, UWorld& ViewWorld, 
 						{
 							continue;
 						}
-						const FStaticMeshData& Data = Receiver->GetComponent()->GetRenderMesh()->MeshData;
+						const FStaticMeshData* Data = Receiver->GetComponent()->GetMeshData();
+						if (!Data)
+						{
+							continue;
+						}
 						const FMatrix& LocalToWorld = Receiver->GetLocalToWorld();
 						const int32 IndexCount = std::min(DecalTriangleIndices.Num(), MaxDebugTriangles * 3);
 						for (int32 i = 0; i + 2 < IndexCount; i += 3)
 						{
-							const FVector P0 = LocalToWorld.TransformPosition(Data.Vertices[DecalTriangleIndices[i]].Position);
-							const FVector P1 = LocalToWorld.TransformPosition(Data.Vertices[DecalTriangleIndices[i + 1]].Position);
-							const FVector P2 = LocalToWorld.TransformPosition(Data.Vertices[DecalTriangleIndices[i + 2]].Position);
+							const FVector P0 = LocalToWorld.TransformPosition(Data->Vertices[DecalTriangleIndices[i]].Position);
+							const FVector P1 = LocalToWorld.TransformPosition(Data->Vertices[DecalTriangleIndices[i + 1]].Position);
+							const FVector P2 = LocalToWorld.TransformPosition(Data->Vertices[DecalTriangleIndices[i + 2]].Position);
 							LineBatcher->AddLine(P0, P1, TriangleColor);
 							LineBatcher->AddLine(P1, P2, TriangleColor);
 							LineBatcher->AddLine(P2, P0, TriangleColor);

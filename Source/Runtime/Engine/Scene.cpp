@@ -398,8 +398,7 @@ void FScene::GatherDecalReceivers(const UDecalComponent& Decal, TArray<FPrimitiv
 			}
 
 			// Decal Pass는 이 메시를 한 번 더 그리므로 GPU 메시가 없는 텍스트·빌보드·파티클은 받을 수 없다.
-			UStaticMesh* Mesh = Component->GetRenderMesh();
-			if (!Mesh || !Mesh->IndexBuffer)
+			if (!Proxy->HasMeshPackets())
 			{
 				return;
 			}
@@ -423,29 +422,33 @@ void FScene::GatherDecalReceivers(const UDecalComponent& Decal, TArray<FPrimitiv
 
 bool FScene::GatherDecalTriangles(const UDecalComponent& Decal, const FPrimitiveSceneProxy& Receiver, TArray<uint32>& OutIndices)
 {
-	const UPrimitiveComponent* Component = Receiver.GetComponent();
-	const UStaticMesh* Mesh = Component ? Component->GetRenderMesh() : nullptr;
-	if (!Mesh || !Mesh->MeshData.TriangleBVH)
+	if (Receiver.HasDeformableMesh())
 	{
 		return false;
 	}
 
-	const FStaticMeshData& Data = Mesh->MeshData;
+	const UPrimitiveComponent* Component = Receiver.GetComponent();
+	const FStaticMeshData* Data = Component ? Component->GetMeshData() : nullptr;
+	if (!Data || !Data->TriangleBVH)
+	{
+		return false;
+	}
+
 	const FMatrix& LocalToWorld = Receiver.GetLocalToWorld();
 	const Collision::FOrientedBox DecalBox = Decal.GetOrientedBox();
 
 	// 피킹용 삼각형 BVH의 노드 상자는 메시 로컬 AABB라서, 월드 행렬을 곱하면 OBB가 된다 (OBBTree).
 	// 데칼을 메시 로컬로 옮기지 않는 이유: 메시에 비균등 스케일과 회전이 함께 있으면 옮긴 데칼이 직육면체가 아니게 되어 SAT가 틀린다.
-	Data.TriangleBVH->Query(
+	Data->TriangleBVH->Query(
 		[&](const FBox& LocalBounds)
 		{
 			return Collision::OverlapBoxBox(DecalBox, MakeWorldOrientedBox(LocalBounds, LocalToWorld), nullptr);
 		},
 		[&](const FMeshTriangleElement& Triangle)
 		{
-			OutIndices.Add(Data.Indices[Triangle.FirstIndex]);
-			OutIndices.Add(Data.Indices[Triangle.FirstIndex + 1]);
-			OutIndices.Add(Data.Indices[Triangle.FirstIndex + 2]);
+			OutIndices.Add(Data->Indices[Triangle.FirstIndex]);
+			OutIndices.Add(Data->Indices[Triangle.FirstIndex + 1]);
+			OutIndices.Add(Data->Indices[Triangle.FirstIndex + 2]);
 		});
 	return true;
 }
