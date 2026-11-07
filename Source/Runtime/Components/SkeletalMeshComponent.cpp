@@ -1,6 +1,7 @@
 #include "EnginePCH.h"
 #include "SkeletalMeshComponent.h"
 #include "Animation/AnimInstance.h"
+#include "Animation/AnimSingleNodeInstance.h"
 #include "Animation/AnimPose.h"
 #include "Asset/AssetManager.h"
 #include "Render/SkeletalMesh.h"
@@ -23,12 +24,13 @@ void USkeletalMeshComponent::SetAnimInstanceClass(UClass* NewClass)
 	{
 		return;
 	}
-	if (AnimClass == NewClass)
+	if (AnimClass == NewClass && AnimationMode == EAnimationMode::AnimationClass)
 	{
 		return;
 	}
 
 	AnimClass = NewClass;
+	AnimationMode = EAnimationMode::AnimationClass;
 	ClearAnimScriptInstance();
 	InitAnim(true);
 }
@@ -43,13 +45,14 @@ void USkeletalMeshComponent::InitAnim(bool bForceReinit)
 
 bool USkeletalMeshComponent::InitializeAnimScriptInstance(bool bForceReinit)
 {
-	if (!AnimClass)
+	UClass* InstanceClass = AnimationMode == EAnimationMode::AnimationSingleNode ? UAnimSingleNodeInstance::StaticClass() : AnimClass;
+	if (!InstanceClass)
 	{
 		return false;
 	}
 	if (!AnimScriptInstance)
 	{
-		AnimScriptInstance = NewObject<UAnimInstance>(this, AnimClass);
+		AnimScriptInstance = NewObject<UAnimInstance>(this, InstanceClass);
 		bForceReinit = true;
 	}
 	if (AnimScriptInstance && (bForceReinit || !AnimScriptInstance->IsInitialized()))
@@ -69,6 +72,92 @@ void USkeletalMeshComponent::ClearAnimScriptInstance()
 		delete AnimScriptInstance;
 	}
 	AnimScriptInstance = nullptr;
+}
+
+void USkeletalMeshComponent::SetAnimationMode(EAnimationMode::Type InAnimationMode, bool bForceInitAnimScriptInstance)
+{
+	const bool bNeedChange = AnimationMode != InAnimationMode;
+	if (bNeedChange)
+	{
+		AnimationMode = InAnimationMode;
+		ClearAnimScriptInstance();
+	}
+	if (bNeedChange || (AnimationMode == EAnimationMode::AnimationClass && bForceInitAnimScriptInstance))
+	{
+		InitAnim(true);
+	}
+}
+
+UAnimSingleNodeInstance* USkeletalMeshComponent::GetSingleNodeInstance() const
+{
+	return Cast<UAnimSingleNodeInstance>(AnimScriptInstance);
+}
+
+void USkeletalMeshComponent::PlayAnimation(UAnimationAsset* NewAnimToPlay, bool bLooping)
+{
+	SetAnimationMode(EAnimationMode::AnimationSingleNode);
+	SetAnimation(NewAnimToPlay);
+	Play(bLooping);
+}
+
+void USkeletalMeshComponent::SetAnimation(UAnimationAsset* NewAnimToPlay)
+{
+	if (auto* Instance = GetSingleNodeInstance())
+	{
+		Instance->SetAnimationAsset(NewAnimToPlay, false);
+		Instance->SetPlaying(false);
+	}
+}
+
+void USkeletalMeshComponent::Play(bool bLooping)
+{
+	if (auto* Instance = GetSingleNodeInstance())
+	{
+		Instance->SetPlaying(true);
+		Instance->SetLooping(bLooping);
+	}
+}
+
+void USkeletalMeshComponent::Stop()
+{
+	if (auto* Instance = GetSingleNodeInstance())
+	{
+		Instance->SetPlaying(false);
+	}
+}
+
+bool USkeletalMeshComponent::IsPlaying() const
+{
+	const auto* Instance = GetSingleNodeInstance();
+	return Instance && Instance->IsPlaying();
+}
+
+void USkeletalMeshComponent::SetPosition(float InPos, bool bFireNotifies)
+{
+	if (auto* Instance = GetSingleNodeInstance())
+	{
+		Instance->SetPosition(InPos, bFireNotifies);
+	}
+}
+
+float USkeletalMeshComponent::GetPosition() const
+{
+	const auto* Instance = GetSingleNodeInstance();
+	return Instance ? Instance->GetCurrentTime() : 0.0f;
+}
+
+void USkeletalMeshComponent::SetPlayRate(float Rate)
+{
+	if (auto* Instance = GetSingleNodeInstance())
+	{
+		Instance->SetPlayRate(Rate);
+	}
+}
+
+float USkeletalMeshComponent::GetPlayRate() const
+{
+	const auto* Instance = GetSingleNodeInstance();
+	return Instance ? Instance->GetPlayRate() : 0.0f;
 }
 
 void USkeletalMeshComponent::OnRegister()
