@@ -540,7 +540,7 @@ bool FImport::BuildRig(FRig& Rig)
 		const FbxQuaternion Q = Local.GetQ();
 		const FVector Translation = Reflect(Local.GetT()) * static_cast<float>(UnitScale);
 		const FbxVector4 S = Local.GetS();
-		FTransform Transform(FQuat(static_cast<float>(Q[0]), static_cast<float>(-Q[1]), static_cast<float>(Q[2]), static_cast<float>(-Q[3])).Normalized().ToFRotator(),
+		FTransform Transform(FQuat(static_cast<float>(Q[0]), static_cast<float>(-Q[1]), static_cast<float>(Q[2]), static_cast<float>(-Q[3])).Normalized(),
 			Translation, FVector(static_cast<float>(S[0]), static_cast<float>(S[1]), static_cast<float>(S[2])));
 		const FMatrix Rebuilt = Transform.GetLocalMatrix();
 		bool Difference = false;

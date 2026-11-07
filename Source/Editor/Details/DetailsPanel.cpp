@@ -1281,7 +1281,12 @@ void DrawProperty(UObject* Object, const FProperty& Property, ImFont* CustomFont
 		bool bChange = false;
 
 		bChanged |= DrawVector3Controller("Location", Value->Location.V, 0.0f);
-		bChanged |= DrawRotatorAsXYZ("Rotation", Value->Rotation);
+		FRotator Rotation = Value->Rotation.ToFRotator();
+		if (DrawRotatorAsXYZ("Rotation", Rotation))
+		{
+			Value->Rotation = Rotation.Quaternion();
+			bChanged = true;
+		}
 		bChanged |= DrawVector3Controller("Scale", Value->Scale.V, 1.0f);
 
 		break;

@@ -2,12 +2,13 @@
 
 #include "Math/EngineMath.h"
 #include "Math/Rotator.h"
+#include "Math/Quat.h"
 
 struct FTransform
 {
 	FTransform() = default;
-	FTransform(FVector InL, FVector InS, FRotator InR);
-	FTransform(const FRotator& InR, const FVector& InL, const FVector& InS = FVector::OneVector)
+	FTransform(FVector InL, FVector InS, FQuat InR);
+	FTransform(const FQuat& InR, const FVector& InL, const FVector& InS = FVector::OneVector)
 		: Location(InL)
 		, Rotation(InR)
 		, Scale(InS)
@@ -27,5 +28,5 @@ struct FTransform
 
 	FVector Location = FVector(0, 0, 0);
 	FVector Scale = FVector(1, 1, 1);
-	FRotator Rotation = FRotator(0, 0, 0);
+	FQuat Rotation = FQuat::Identity();
 };
