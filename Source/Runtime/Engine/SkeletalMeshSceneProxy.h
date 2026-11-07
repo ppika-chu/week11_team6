@@ -17,6 +17,9 @@ public:
 	void GetMeshPackets(FRenderQueue& Out, uint32 LODIndex) const override;
 	void AddReferencedMaterials(TSet<UMaterial*>& OutMaterials) const override;
 
+	bool HasMeshPackets() const override { return MeshObject != nullptr; }
+	bool HasDeformableMesh() const override { return true; }
+
 protected:
 	void UpdateDynamicData() override;
 	void OnRenderStateUpdated() override;

@@ -27,6 +27,7 @@ public:
 	static FShaderProgram* GetShaderProgram(const FString& InPath, const D3D_SHADER_MACRO* Macro = nullptr);
 	// 시작 시 스캔하지 않는 셰이더(게임 에셋 등)나 매크로 변형을 처음 요청할 때 컴파일해 캐시한다. 실패하면 nullptr.
 	static FShaderProgram* FindOrLoadShaderProgram(const FString& InPath, const D3D_SHADER_MACRO* Macro = nullptr);
+	static FShaderProgram* FindOrLoadShaderProgram(const FString& Path, const char* Define, EVertexFactoryType VertexFactoryType);
 
 	// 뷰모드에 맞는 UberLit 변형. 컴파일에 실패했으면 nullptr.
 	static FShaderProgram* GetUberLitProgram(EVertexFactoryType VFType, EViewMode Mode);

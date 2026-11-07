@@ -200,6 +200,21 @@ FShaderProgram* FRenderResourceManager::FindOrLoadShaderProgram(const FString& I
 	return nullptr;
 }
 
+FShaderProgram* FRenderResourceManager::FindOrLoadShaderProgram(const FString& Path, const char* Define, EVertexFactoryType VertexFactoryType)
+{
+	D3D_SHADER_MACRO Macros[3]{};
+	int32 N = 0;
+	if (Define)
+	{
+		Macros[N++] = { Define, "1" };
+	}
+	if (const char* VertexFactoryDefine = GVertexFactoryTypes[static_cast<int32>(VertexFactoryType)].Define)
+	{
+		Macros[N++] = { VertexFactoryDefine, "1" };
+	}
+	return FindOrLoadShaderProgram(Path, N ? Macros : nullptr);
+}
+
 FComputeShader* FRenderResourceManager::GetComputeShader(const FString& InPath)
 {
 	if (TUniquePtr<FComputeShader>* Found = Get().ComputeShaderMap.Find(InPath))

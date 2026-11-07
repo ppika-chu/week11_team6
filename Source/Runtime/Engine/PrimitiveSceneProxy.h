@@ -46,6 +46,9 @@ public:
 		const FVector& CameraLocation, FBillboardMatrixBuilder BuildBillboardMatrix, const void* ViewContext,
 		TArray<int32>& SortedParticleIndices, TArray<float>& ParticleDistancesSquared) const;
 
+	virtual bool HasMeshPackets() const { return Mesh != nullptr; }
+	virtual bool HasDeformableMesh() const { return false; }
+
 	UPrimitiveComponent* GetComponent() const { return Component; }
 	const FAABB& GetBounds() const { return Bounds; }
 	const FMatrix& GetLocalToWorld() const { return LocalToWorld; }
