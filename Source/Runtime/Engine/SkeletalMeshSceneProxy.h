@@ -2,7 +2,7 @@
 
 #include "PrimitiveSceneProxy.h"
 #include "Render/Buffer.h"
-#include "Render/GPUSkinning.h"
+#include "Render/VertexFactory.h"
 
 class USkinnedMeshComponent;
 
@@ -25,5 +25,5 @@ protected:
 private:
 	bool bGPUSkinning = false;
 	TUniquePtr<FStructuredBuffer> BoneBuffer;
-	FSkinningResources Skinning;
+	FVertexFactory VertexFactory;
 };

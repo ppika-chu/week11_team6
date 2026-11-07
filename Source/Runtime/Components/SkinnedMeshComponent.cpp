@@ -7,7 +7,6 @@
 #include "Render/SkeletalMesh.h"
 #include "Render/Material.h"
 #include "Engine/PrimitiveSceneProxy.h"
-#include "Render/GPUSkinning.h"
 #include "Render/SkinningSettings.h"
 
 USkinnedMeshComponent::USkinnedMeshComponent()
@@ -182,17 +181,9 @@ void USkinnedMeshComponent::FinalizeBoneTransform()
 	if (FSkinningSettings::GetSkinningMode() == ESkinningMode::CPU)
 	{
 		UpdateSkinnedVertices();
-		bVertexBufferIsBindPose = false;
 	}
 	else
 	{
-		if (!bVertexBufferIsBindPose && RenderMesh)
-		{
-			const auto& Bind = SkeletalMesh->GetMeshData().Vertices;
-			RenderCommand::UpdateBufferData(RenderMesh->VertexBuffer.get(), Bind.GetData(), sizeof(FVertex) * Bind.Num());
-			bVertexBufferIsBindPose = true;
-		}
-
 		if (FPrimitiveSceneProxy* Proxy = GetSceneProxy())
 		{
 			Proxy->MarkShadowDirty();
@@ -239,8 +230,6 @@ void USkinnedMeshComponent::CreateRenderMesh()
 	Mesh->RebuildRenderData();
 	RenderMesh = Mesh;
 	SkinnedVertices = Source.Vertices;
-
-	bVertexBufferIsBindPose = false;
 }
 
 void USkinnedMeshComponent::DestroyRenderMesh()

@@ -20,7 +20,9 @@ bool FSkeletalMeshSceneProxy::GatherDynamicRenderPackets(FRenderQueue& RenderQue
 void FSkeletalMeshSceneProxy::AddMeshPackets(FRenderQueue& Queue) const
 {
 	auto* RenderMesh = GetComponent()->GetRenderMesh();
-	if (!RenderMesh)
+	auto* Component = CastChecked<USkinnedMeshComponent>(GetComponent());
+	auto* SkeletalMesh = Component->GetSkeletalMesh();
+	if (!RenderMesh || !SkeletalMesh)
 	{
 		return;
 	}
@@ -43,12 +45,12 @@ void FSkeletalMeshSceneProxy::AddMeshPackets(FRenderQueue& Queue) const
 		const FCachedMeshSection& Section = State->Sections[LOD.FirstSection + I];
 		FRenderPacket& Packet = Queue.AddDefaulted_GetRef();
 		Packet.Proxy = this;
-		Packet.Mesh = RenderMesh;
+		Packet.VertexFactory = bGPUSkinning ? &VertexFactory : &RenderMesh->GetVertexFactory(0);
+		Packet.IndexBuffer = bGPUSkinning ? SkeletalMesh->IndexBuffer.get() : RenderMesh->GetIndexBuffer(0);
 		Packet.Material = Section.Material;
 		Packet.StartIndex = Section.StartIndex;
 		Packet.IndexCount = Section.IndexCount;
 		Packet.LODIndex = 0;
-		Packet.Skinning = bGPUSkinning ? &Skinning : nullptr;
 	}
 }
 
@@ -75,6 +77,8 @@ void FSkeletalMeshSceneProxy::UpdateDynamicData()
 	RenderCommand::UpdateBufferData(BoneBuffer.get(), Matrices.GetData(), sizeof(FMatrix) * Count);
 	FStatRegistry::AddCounter(SkinningStats::STAT_SkinUploadBytes, sizeof(FMatrix) * Count);
 
-	Skinning.BoneMatrices = BoneBuffer.get();
-	Skinning.SkinWeights = SkeletalMesh->SkinWeightBuffer.get();
+	VertexFactory.Type = EVertexFactoryType::GPUSkin;
+	VertexFactory.VertexBuffer = SkeletalMesh->VertexBuffer.get();
+	VertexFactory.BoneMatrices = BoneBuffer.get();
+	VertexFactory.SkinWeights = SkeletalMesh->SkinWeightBuffer.get();
 }

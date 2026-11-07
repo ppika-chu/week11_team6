@@ -524,6 +524,7 @@ bool UAssetManager::ReorientStaticMesh(UStaticMesh& Mesh, const std::function<FV
 		return false;
 	}
 	Mesh.VertexBuffer = std::move(VB);
+	Mesh.RebuildRenderData();
 
 	Data.BuildTriangleBVH(); // 피킹용 삼각형 BVH도 새 좌표로
 	return true;

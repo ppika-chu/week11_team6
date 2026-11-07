@@ -257,7 +257,8 @@ void FSceneGatherer::GatherRenderPackets(FScene& Scene, FRenderQueue& RenderQueu
 
 						FRenderPacket& Packet = Out.Packets.AddDefaulted_GetRef();   // 조각 전용 배열에 추가
 						Packet.Proxy = Proxy;
-						Packet.Mesh = Mesh;
+						Packet.VertexFactory = &Mesh->GetVertexFactory(LOD);
+						Packet.IndexBuffer = Mesh->GetIndexBuffer(LOD);
 						Packet.Material = Section.Material;
 						Packet.StartIndex = Section.StartIndex;
 						Packet.IndexCount = Section.IndexCount;

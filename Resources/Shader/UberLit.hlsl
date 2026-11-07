@@ -1,5 +1,6 @@
 #pragma pack_matrix(row_major)
 
+#include "VertexFactory.hlsli"
 #include "ColorSpace.hlsli"
 #include "LightingCommon.hlsli"
 
@@ -19,27 +20,9 @@ cbuffer MaterialParams : register(b1)
     float EmissiveFactor;
 };
 
-// Renderer.h의 FPerObjectConstants와 바이트 단위로 같아야 한다.
-cbuffer PerObjectConstants : register(b2)
-{
-    matrix World;
-    matrix WorldInverseTranspose; // (World^-1)^T
-    uint ReceiveShadow;
-    uint3 ObjectPadding;
-};
-
 Texture2D DiffuseTexture : register(t0);
 Texture2D NormalTexture : register(t1);
 SamplerState MaterialSampler : register(s0);
-
-struct VS_INPUT
-{
-    float3 Position : POSITION;
-    float3 Normal : NORMAL;
-    float4 Tangent : TANGENT;   // w = 바이탄젠트 부호
-    float2 UV : TEXCOORD;
-    float4 Color : COLOR;
-};
 
 // VS가 출력하고 PS가 입력으로 받는다.
 struct VS_OUTPUT
@@ -133,30 +116,24 @@ void ApplySkinning(inout VS_INPUT Input, uint VertexID)
 
 #endif
 
-VS_OUTPUT mainVS(VS_INPUT Input, uint VertexID : SV_VertexID)
+VS_OUTPUT mainVS(FVertexFactoryInput Input)
 {
-#if defined(GPU_SKINNING)
-    ApplySkinning(Input, VertexID);
-#endif
+    const FVertexFactoryIntermediates VFIntermediates = GetVertexFactoryIntermediates(Input);
+    const float4 WorldPos = VertexFactoryGetWorldPosition(Input, VFIntermediates);
+    const float3x3 TangentToLocal = VertexFactoryGetTangentToLocal(Input, VFIntermediates);
 
     VS_OUTPUT Output;
-
-    const float4 WorldPos = mul(float4(Input.Position, 1.0f), World);
     Output.SvPosition = mul(WorldPos, ViewProjection);
     Output.WorldPos = WorldPos.xyz;
-
-    // 노멀은 역전치로, 탄젠트는 표면을 따라 놓인 방향이라 World로 변환한다.
-    // World가 뒤집혀 있으면(행렬식 < 0) 바이탄젠트 부호도 뒤집는다.
-    Output.Normal = mul(float4(Input.Normal, 0.0f), WorldInverseTranspose).xyz;
-    Output.Tangent = float4(mul(float4(Input.Tangent.xyz, 0.0f), World).xyz, Input.Tangent.w * (determinant((float3x3) World) < 0.0f ? -1.0f : 1.0f));
-
+    Output.Normal = VertexFactoryGetWorldNormal(Input, VFIntermediates);
+    Output.Tangent = float4(mul(float4(Input.Tangent.xyz, 0.0f), World).xyz, VFIntermediates.TangentToWorldSign);
     Output.UV = Input.UV;
     Output.Color = Input.Color;
 
     // World 행렬의 0~2행 = 로컬 X·Y·Z 축 × 스케일. 길이가 스케일, 정규화하면 축의 월드 방향이다.
     const float3 ObjectScale = float3(length(World[0].xyz), length(World[1].xyz), length(World[2].xyz));
-    Output.ObjectPos = Input.Position * ObjectScale;
-    Output.ObjectNormal = Input.Normal;
+    Output.ObjectPos = VertexFactoryGetLocalPosition(Input, VFIntermediates) * ObjectScale;
+    Output.ObjectNormal = TangentToLocal[2];
     Output.ObjectAxisX = World[0].xyz / max(ObjectScale.x, 1e-6f);
     Output.ObjectAxisY = World[1].xyz / max(ObjectScale.y, 1e-6f);
     Output.ObjectAxisZ = World[2].xyz / max(ObjectScale.z, 1e-6f);

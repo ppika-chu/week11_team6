@@ -6,7 +6,6 @@
 #include <array>
 #include <utility>
 
-struct FSkinningResources;
 class FPrimitiveSceneProxy;
 inline constexpr uint32 InvalidObjectSlot = ~0u;
 
@@ -14,7 +13,8 @@ struct FRenderPacket
 {
 	const FPrimitiveSceneProxy* Proxy = nullptr;
 	const FMatrix* Model = nullptr;
-	UStaticMesh* Mesh = nullptr;
+	const FVertexFactory* VertexFactory = nullptr;
+	FIndexBuffer* IndexBuffer = nullptr;
 	UMaterial* Material = nullptr;
 	const void* MaterialParamData = nullptr;
 	float CameraToParticleDistance = 0.0f;
@@ -24,7 +24,6 @@ struct FRenderPacket
 	uint32 Slot = InvalidObjectSlot;
 	uint8 LODIndex = 0;
 	bool bOccludedByGpu = false;
-	const FSkinningResources* Skinning = nullptr;
 };
 
 // Shared bindings, with one ordinary indexed draw per item.

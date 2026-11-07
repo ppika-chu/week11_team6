@@ -1,8 +1,8 @@
 #include "EnginePCH.h"
 #include "SkeletalMesh.h"
 
-#include "GPUSkinning.h"
 #include "RenderCommand.h"
+#include "VertexFactory.h"
 
 namespace
 {

@@ -76,5 +76,6 @@ private:
 	USkeletalMesh* PoseSourceMesh = nullptr;
 	UStaticMesh* RenderMesh = nullptr;
 	TArray<FVertex> SkinnedVertices;
-	bool bVertexBufferIsBindPose = false;
+
+	uint32 PoseRevision = 0; // 프록시가 다시 스키닝할지 판단할 때 쓰임
 };

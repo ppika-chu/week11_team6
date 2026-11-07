@@ -90,7 +90,8 @@ void UStaticMeshComponent::SubmitToRenderQueue(FRenderQueue& RenderQueue, uint32
 		const FCachedMeshSection& Section = State->Sections[LOD.FirstSection + I];
 		FRenderPacket& Packet = RenderQueue.AddDefaulted_GetRef();
 		Packet.Proxy = Proxy;
-		Packet.Mesh = StaticMesh;
+		Packet.VertexFactory = &StaticMesh->GetVertexFactory(LODIndex);
+		Packet.IndexBuffer = StaticMesh->GetIndexBuffer(LODIndex);
 		Packet.Material = Section.Material;
 		Packet.StartIndex = Section.StartIndex;
 		Packet.IndexCount = Section.IndexCount;
