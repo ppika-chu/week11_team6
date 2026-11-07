@@ -9,9 +9,18 @@
 struct FAnimNode_TransitionResult : public FAnimNode_Base
 {
 public:
-	void Initialize() override;
-	void Update(float DeltaTime) override;
-	void Evaluate(FAnimPose& OutPose) override;
+	void Initialize()
+	{
+		bCanTransition = false;
+	}
+	void Update(float DeltaTime)
+	{
+
+	}
+	void Evaluate(FAnimPose& OutPose)
+	{
+
+	}
 
 	void SetCanTransition(bool bInCanTransition) { bCanTransition = bInCanTransition; }
 	bool GetCanTransition() const { return bCanTransition; }

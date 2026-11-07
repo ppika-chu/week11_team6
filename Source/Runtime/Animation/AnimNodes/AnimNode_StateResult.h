@@ -10,7 +10,7 @@
 struct FAnimNode_StateResult : public FAnimNode_Root
 {
 public:
-	void Initialize() override;
-	void Update(float DeltaTime) override;
-	void Evaluate(FAnimPose& OutPose) override;
+	//void Initialize() override;
+	//void Update(float DeltaTime) override;
+	//void Evaluate(FAnimPose& OutPose) override;
 };

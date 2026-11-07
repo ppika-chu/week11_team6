@@ -14,29 +14,34 @@ FTransform::FTransform(FVector InL, FVector InS, FQuat InR)
 	Rotation = InR;
 }
 
-void FTransform::Blend(const FTransform& A, const FTransform& B, float Alpha)
+FTransform FTransform::Blend(const FTransform& A, const FTransform& B, float Alpha)
 {
-	if (fabsf(Alpha) <= ZERO_ANIMWEIGHT_THRESH)
+	const float Weight = std::clamp(Alpha, 0.0f, 1.0f);
+	if (Weight <= 0.0f)
 	{
-		*this = A;
+		return A;
 	}
-	else if (fabsf(Alpha - 1.0f) <= ZERO_ANIMWEIGHT_THRESH)
+	if (Weight >= 1.0f)
 	{
-		*this = B;
+		return B;
 	}
-	else
-	{
-		Location = FMath::Lerp(A.Location, B.Location, Alpha);
-		Scale = FMath::Lerp(A.Scale, B.Scale, Alpha);
-		Rotation = FQuat::FastLerp(A.Rotation, B.Rotation, Alpha).Normalized();
-	}
-}
 
-bool FTransform::ContainsNaN() const
-{
-	return !std::isfinite(Location.X) || !std::isfinite(Location.Y) || !std::isfinite(Location.Z)
-		|| !std::isfinite(Scale.X) || !std::isfinite(Scale.Y) || !std::isfinite(Scale.Z)
-		|| !std::isfinite(Rotation.X) || !std::isfinite(Rotation.Y) || !std::isfinite(Rotation.Z) || !std::isfinite(Rotation.W);
+	const FQuat From = A.Rotation;
+	const FQuat To = B.Rotation;
+	const float Dot = From.X * To.X + From.Y * To.Y + From.Z * To.Z + From.W * To.W;
+	const float ToWeight = Dot < 0.0f ? -Weight : Weight;
+	const float FromWeight = 1.0f - Weight;
+	const FQuat BlendedRotation(
+		From.X * FromWeight + To.X * ToWeight,
+		From.Y * FromWeight + To.Y * ToWeight,
+		From.Z * FromWeight + To.Z * ToWeight,
+		From.W * FromWeight + To.W * ToWeight);
+
+	FTransform Result;
+	Result.Location = A.Location + (B.Location - A.Location) * Weight;
+	Result.Scale = A.Scale + (B.Scale - A.Scale) * Weight;
+	Result.Rotation = BlendedRotation.Normalized();
+	return Result;
 }
 
 FMatrix FTransform::GetLocalMatrix() const

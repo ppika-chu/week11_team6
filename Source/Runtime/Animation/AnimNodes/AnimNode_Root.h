@@ -10,9 +10,30 @@
 struct FAnimNode_Root : public FAnimNode_Base
 {
 public:
-	void Initialize() override;
-	void Update(float DeltaTime) override;
-	void Evaluate(FAnimPose& OutPose) override;
+	void Initialize()
+	{
+		if (InputNode)
+		{
+			InputNode->Initialize();
+		}
+	}
+	void Update(float DeltaTime)
+	{
+		if (InputNode)
+		{
+			InputNode->Update(DeltaTime);
+		}
+	}
+	void Evaluate(FAnimPose& OutPose)
+	{
+		if (!InputNode)
+		{
+			OutPose.LocalTransforms.Reset();
+			return;
+		}
+
+		InputNode->Evaluate(OutPose);
+	}
 
 	void SetInputNode(FAnimNode_Base* InInputNode) { InputNode = InInputNode; }
 	FAnimNode_Base* GetInputNode() const { return InputNode; }
