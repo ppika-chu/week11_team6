@@ -20,8 +20,8 @@ FTransform FTransform::Blend(const FTransform& A, const FTransform& B, float Alp
 		return B;
 	}
 
-	const FQuat From = A.Rotation.Quaternion();
-	const FQuat To = B.Rotation.Quaternion();
+	const FQuat From = A.Rotation;
+	const FQuat To = B.Rotation;
 	const float Dot = From.X * To.X + From.Y * To.Y + From.Z * To.Z + From.W * To.W;
 	const float ToWeight = Dot < 0.0f ? -Weight : Weight;
 	const float FromWeight = 1.0f - Weight;
@@ -34,7 +34,7 @@ FTransform FTransform::Blend(const FTransform& A, const FTransform& B, float Alp
 	FTransform Result;
 	Result.Location = A.Location + (B.Location - A.Location) * Weight;
 	Result.Scale = A.Scale + (B.Scale - A.Scale) * Weight;
-	Result.Rotation = BlendedRotation.Normalized().ToFRotator();
+	Result.Rotation = BlendedRotation.Normalized();
 	return Result;
 }
 
