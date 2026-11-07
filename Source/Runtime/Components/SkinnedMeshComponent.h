@@ -40,18 +40,12 @@ public:
 	FVector GetBoneLocation(int32 BoneIndex) const;
 
 	const TArray<FMatrix>& GetComponentSpaceTransforms() const { return ComponentSpaceTransforms; }
-	const TArray<FMatrix>& GetSkinningMatrices() const { return SkinningMatrices; }
-	const TArray<FVertex>& GetSkinnedVertices() const { return SkinnedVertices; }
 
 	// 현재 포즈로 본 행렬을 다시 계산하고 스키닝한다.
 	// 이 클래스는 포즈 입력이 없으므로 기준 자세를 쓴다. 파생 클래스가 자기 포즈로 덮어쓴다.
 	virtual void RefreshBoneTransforms();
 
 	void SubmitToRenderQueue(FRenderQueue& Queue) override;
-
-	// Log
-	void LogBoneTransforms() const;
-	void LogSkinningMatrices() const;
 
 protected:
 	// 메시가 바뀌었을 때 배열 크기와 렌더 메시를 다시 만든다. 파생 클래스는 자기 포즈를 준비한 뒤 Super를 부른다
@@ -66,16 +60,11 @@ protected:
 	USkeletalMesh* SkeletalMesh = nullptr;
 
 	TArray<FMatrix> ComponentSpaceTransforms;
-	TArray<FMatrix> SkinningMatrices;
 
 private:
 	void CreateRenderMesh();
 	void DestroyRenderMesh();
-	void UpdateSkinnedVertices();
 
 	USkeletalMesh* PoseSourceMesh = nullptr;
 	UStaticMesh* RenderMesh = nullptr;
-	TArray<FVertex> SkinnedVertices;
-
-	uint32 PoseRevision = 0; // 프록시가 다시 스키닝할지 판단할 때 쓰임
 };

@@ -30,6 +30,8 @@ public:
 	virtual void AddReferencedMaterials(TSet<UMaterial*>& OutMaterials) const;
 	void OnMeshRenderDataChanged();
 	void OnMeshDestroyed();
+
+	void MarkRenderDynamicDataDirty() { bRenderDynamicDataDirty = true; }
 	// 정점이 CPU에서 바뀌는 메시(스키닝 등)가 그림자 캐시를 다시 그리게 한다.
 	void MarkShadowDirty();
 
@@ -64,6 +66,7 @@ public:
 protected:
 	// 파생 Proxy만 자신의 렌더 스냅샷을 갱신한다.
 	virtual void UpdateDynamicData();
+	bool bRenderDynamicDataDirty = true;
 
 private:
 	friend class FScene;

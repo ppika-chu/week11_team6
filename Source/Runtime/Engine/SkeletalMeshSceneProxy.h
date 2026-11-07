@@ -2,8 +2,11 @@
 
 #include "PrimitiveSceneProxy.h"
 #include "Render/Buffer.h"
+#include "Render/SkinningSettings.h"
 #include "Render/VertexFactory.h"
 
+struct FVertex;
+class USkeletalMesh;
 class USkinnedMeshComponent;
 
 class FSkeletalMeshSceneProxy : public FPrimitiveSceneProxy
@@ -23,7 +26,20 @@ protected:
 	void UpdateDynamicData() override;
 
 private:
+	bool UpdateRefToLocalMatrices(const USkinnedMeshComponent& Component, const USkeletalMesh& Mesh);
+	void UpdateGPUSkin(const USkeletalMesh& Mesh);
+	void UpdateCPUSkin(const USkeletalMesh& Mesh);
+
+	TArray<FMatrix> ReferenceToLocal;
+	ESkinningMode LastSkinningMode = ESkinningMode::GPU;
 	bool bGPUSkinning = false;
+
+	// GPU 스키닝
 	TUniquePtr<FStructuredBuffer> BoneBuffer;
-	FVertexFactory VertexFactory;
+	FVertexFactory GPUSkinVertexFactory;
+
+	// CPU 스키닝
+	TArray<FVertex> SkinnedVertices;
+	TUniquePtr<FVertexBuffer> CPUSkinVertexBuffer;
+	FVertexFactory CPUSkinVertexFactory;
 };

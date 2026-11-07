@@ -104,8 +104,6 @@ void USkinnedMeshComponent::RefreshBoneTransforms()
 void USkinnedMeshComponent::InitPoseFromMesh()
 {
 	ComponentSpaceTransforms.Reset();
-	SkinningMatrices.Reset();
-	SkinnedVertices.Reset();
 	DestroyRenderMesh();
 	PoseSourceMesh = SkeletalMesh;
 
@@ -116,7 +114,6 @@ void USkinnedMeshComponent::InitPoseFromMesh()
 
 	const int32 BoneCount = SkeletalMesh->RefSkeleton.RefBonePose.Num();
 	ComponentSpaceTransforms.SetNum(BoneCount);
-	SkinningMatrices.SetNum(BoneCount);
 
 	CreateRenderMesh();
 	RefreshBoneTransforms();
@@ -158,37 +155,7 @@ void USkinnedMeshComponent::FillComponentSpaceTransforms(const TArray<FTransform
 
 void USkinnedMeshComponent::FinalizeBoneTransform()
 {
-	if (!SkeletalMesh)
-	{
-		return;
-	}
-
-	const TArray<FMatrix>& InvBind = SkeletalMesh->RefBasesInvMatrix;
-	if (InvBind.Num() != ComponentSpaceTransforms.Num())
-	{
-		HTR_LOG(Error, "[Skel] RefBasesInvMatrix count mismatch: {} vs {}", InvBind.Num(), ComponentSpaceTransforms.Num());
-		return;
-	}
-
-	SCOPE_CYCLE_COUNTER(SkinningStats::STAT_CPU);
-	FStatRegistry::AddCounter(SkinningStats::STAT_SkinnedVertices, static_cast<uint64>(SkeletalMesh->GetMeshData().Vertices.Num()));
-
-	for (int32 i = 0; i < ComponentSpaceTransforms.Num(); ++i)
-	{
-		SkinningMatrices[i] = InvBind[i] * ComponentSpaceTransforms[i];
-	}
-
-	if (FSkinningSettings::GetSkinningMode() == ESkinningMode::CPU)
-	{
-		UpdateSkinnedVertices();
-	}
-	else
-	{
-		if (FPrimitiveSceneProxy* Proxy = GetSceneProxy())
-		{
-			Proxy->MarkShadowDirty();
-		}
-	}
+	MarkRenderDynamicDataDirty();
 }
 
 void USkinnedMeshComponent::CreateRenderMesh()
@@ -229,7 +196,6 @@ void USkinnedMeshComponent::CreateRenderMesh()
 
 	Mesh->RebuildRenderData();
 	RenderMesh = Mesh;
-	SkinnedVertices = Source.Vertices;
 }
 
 void USkinnedMeshComponent::DestroyRenderMesh()
@@ -238,114 +204,11 @@ void USkinnedMeshComponent::DestroyRenderMesh()
 	RenderMesh = nullptr;
 }
 
-void USkinnedMeshComponent::UpdateSkinnedVertices()
-{
-	if (!SkeletalMesh || !RenderMesh)
-	{
-		return;
-	}
-
-	const FStaticMeshData& Source = SkeletalMesh->GetMeshData();
-	const FSkinWeightData& Skin = SkeletalMesh->GetSkinWeights();
-	const int32 VertexCount = Source.Vertices.Num();
-	const int32 BoneCount = SkinningMatrices.Num();
-	if (Skin.InfluenceBones.Num() != VertexCount || Skin.InfluenceWeights.Num() != VertexCount)
-	{
-		HTR_LOG(Error, "[Skel] Skin weight count mismatch: vertices={} weights={}", VertexCount, Skin.InfluenceWeights.Num());
-		return;
-	}
-	SkinnedVertices.SetNum(VertexCount);
-
-	for (int32 v = 0; v < VertexCount; ++v)
-	{
-		const FVertex& Bind = Source.Vertices[v];
-		const std::array<uint16, 4>& Bones = Skin.InfluenceBones[v];
-		const std::array<float, 4>& Weights = Skin.InfluenceWeights[v];
-		const FVector BindTangent(Bind.Tangent.X, Bind.Tangent.Y, Bind.Tangent.Z);
-
-		FVector Position = FVector::ZeroVector;
-		FVector Normal = FVector::ZeroVector;
-		FVector Tangent = FVector::ZeroVector;
-
-		// LBS: 붙어 있는 본(최대 4개)의 행렬로 각각 옮긴 뒤 가중치만큼 섞는다
-		for (int32 k = 0; k < 4; ++k)
-		{
-			const float W = Weights[k];
-			if (W <= 0.0f || Bones[k] >= BoneCount)
-			{
-				continue;
-			}
-
-			const FMatrix& M = SkinningMatrices[Bones[k]];
-			Position += M.TransformPosition(Bind.Position) * W;
-			Normal += M.TransformVector(Bind.Normal) * W;
-			Tangent += M.TransformVector(BindTangent) * W;
-		}
-
-		FVertex& Out = SkinnedVertices[v];
-		Out = Bind;
-		Out.Position = Position;
-		Out.Normal = Normal.GetSafeNormal();
-		const FVector T = Tangent.GetSafeNormal();
-		Out.Tangent = FVector4(T.X, T.Y, T.Z, Bind.Tangent.W);
-	}
-
-	FStatRegistry::AddCounter(SkinningStats::STAT_SkinUploadBytes, sizeof(FVertex) * VertexCount);
-	RenderCommand::UpdateBufferData(RenderMesh->VertexBuffer.get(), SkinnedVertices.GetData(),
-		sizeof(FVertex) * static_cast<uint32>(VertexCount));
-
-	// 정점이 바뀌었으므로 캐시된 그림자(Spot/Point는 투영이 고정이라 계속 Hit)를 무효화한다
-	if (FPrimitiveSceneProxy* Proxy = GetSceneProxy())
-	{
-		Proxy->MarkShadowDirty();
-	}
-}
-
 void USkinnedMeshComponent::SubmitToRenderQueue(FRenderQueue& Queue)
 {
 	if (auto* Proxy = static_cast<FSkeletalMeshSceneProxy*>(GetSceneProxy()))
 	{
 		Proxy->PrepareDynamicData();
 		Proxy->AddMeshPackets(Queue);
-	}
-}
-
-void USkinnedMeshComponent::LogBoneTransforms() const
-{
-	if (!SkeletalMesh)
-	{
-		HTR_LOG(Warning, "[SkelTest] No skeletal mesh");
-		return;
-	}
-
-	const FReferenceSkeleton& Skeleton = SkeletalMesh->RefSkeleton;
-	for (int32 i = 0; i < ComponentSpaceTransforms.Num(); ++i)
-	{
-		const FVector Location = GetBoneLocation(i);
-		HTR_LOG(Info, "[SkelTest] Bone{} '{}' pos=({:.2f}, {:.2f}, {:.2f})",
-			i, Skeleton.RefBoneInfo[i].Name, Location.X, Location.Y, Location.Z);
-	}
-}
-
-void USkinnedMeshComponent::LogSkinningMatrices() const
-{
-	if (!SkeletalMesh)
-	{
-		return;
-	}
-
-	const FReferenceSkeleton& Skeleton = SkeletalMesh->RefSkeleton;
-	for (int32 i = 0; i < SkinningMatrices.Num(); ++i)
-	{
-		float MaxError = 0.0f;
-		for (int32 r = 0; r < 4; ++r)
-		{
-			for (int32 c = 0; c < 4; ++c)
-			{
-				const float Expected = (r == c) ? 1.0f : 0.0f;
-				MaxError = FMath::Max(MaxError, std::fabs(SkinningMatrices[i].M[r][c] - Expected));
-			}
-		}
-		HTR_LOG(Info, "[SkelTest] Skin{} '{}' identityError={:.4f}", i, Skeleton.RefBoneInfo[i].Name, MaxError);
 	}
 }
