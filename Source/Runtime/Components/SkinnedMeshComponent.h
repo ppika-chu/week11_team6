@@ -40,8 +40,6 @@ public:
 	// 이 클래스는 포즈 입력이 없으므로 기준 자세를 쓴다. 파생 클래스가 자기 포즈로 덮어쓴다.
 	virtual void RefreshBoneTransforms();
 
-	void SubmitToRenderQueue(FRenderQueue& Queue) override;
-
 	TUniquePtr<FSkeletalMeshObject> MeshObject;
 
 protected:

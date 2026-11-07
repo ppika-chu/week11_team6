@@ -4,8 +4,6 @@
 #include "Components/SkinnedMeshComponent.h"
 #include "Core/Stats/LightweightStats.h"
 #include "Core/Stats/SkinningStats.h"
-#include "Render/RenderCommand.h"
-#include "Render/SkinningSettings.h"
 
 FSkeletalMeshSceneProxy::FSkeletalMeshSceneProxy(USkinnedMeshComponent* InComponent, FSkeletalMeshObject* InMeshObject)
 	: FPrimitiveSceneProxy(InComponent)
@@ -14,11 +12,11 @@ FSkeletalMeshSceneProxy::FSkeletalMeshSceneProxy(USkinnedMeshComponent* InCompon
 
 bool FSkeletalMeshSceneProxy::GatherDynamicRenderPackets(FRenderQueue& RenderQueue, FRenderQueue* IconQueue, const FVector& CameraLocation, FBillboardMatrixBuilder BuildBillboardMatrix, const void* ViewContext, TArray<int32>& SortedParticleIndices, TArray<float>& ParticleDistancesSquared) const
 {
-	AddMeshPackets(RenderQueue);
+	GetMeshPackets(RenderQueue, 0);
 	return true;
 }
 
-void FSkeletalMeshSceneProxy::AddMeshPackets(FRenderQueue& Queue) const
+void FSkeletalMeshSceneProxy::GetMeshPackets(FRenderQueue& Out, uint32 LODIndex) const
 {
 	if (!MeshObject)
 	{
@@ -27,7 +25,7 @@ void FSkeletalMeshSceneProxy::AddMeshPackets(FRenderQueue& Queue) const
 
 	for (const auto& Section : Sections)
 	{
-		FRenderPacket& Packet = Queue.AddDefaulted_GetRef();
+		FRenderPacket& Packet = Out.AddDefaulted_GetRef();
 		Packet.Proxy = this;
 		Packet.VertexFactory = &MeshObject->GetVertexFactory();
 		Packet.IndexBuffer = MeshObject->GetIndexBuffer();

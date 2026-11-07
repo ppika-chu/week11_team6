@@ -162,12 +162,3 @@ void USkinnedMeshComponent::FinalizeBoneTransform()
 {
 	MarkRenderDynamicDataDirty();
 }
-
-void USkinnedMeshComponent::SubmitToRenderQueue(FRenderQueue& Queue)
-{
-	if (auto* Proxy = static_cast<FSkeletalMeshSceneProxy*>(GetSceneProxy()))
-	{
-		Proxy->PrepareDynamicData();
-		Proxy->AddMeshPackets(Queue);
-	}
-}

@@ -39,7 +39,7 @@ public:
 	void InvalidateDynamicData() { bDynamicDataPrepared = false; }
 	void PrepareDynamicData();
 
-	virtual bool SupportsStaticFastPath() const { return true; }
+	virtual void GetMeshPackets(FRenderQueue& Out, uint32 LODIndex) const;
 
 	// 기본 Proxy는 기존 Component 제출 경로를 사용한다.
 	virtual bool GatherDynamicRenderPackets(FRenderQueue& RenderQueue, FRenderQueue* IconQueue,

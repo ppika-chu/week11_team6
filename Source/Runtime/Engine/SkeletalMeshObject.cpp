@@ -13,6 +13,7 @@ bool FSkeletalMeshObject::Update(const USkinnedMeshComponent& Component)
 	const TArray<FMatrix>& InvBind = Mesh->RefBasesInvMatrix;
 	if (ComponentSpaceTransforms.IsEmpty() || ComponentSpaceTransforms.Num() != InvBind.Num())
 	{
+		HTR_LOG(Error, std::format("ComponentSpaceTransforms and InvBind have different sizes: {} vs {}", ComponentSpaceTransforms.Num(), InvBind.Num()));
 		return false;
 	}
 

@@ -24,6 +24,31 @@ void FPrimitiveSceneProxy::PrepareDynamicData()
 	bDynamicDataPrepared = true;
 }
 
+void FPrimitiveSceneProxy::GetMeshPackets(FRenderQueue& Out, uint32 LODIndex) const
+{
+	if (!Mesh || !RenderState)
+	{
+		return;
+	}
+	if (LODIndex >= RenderState->LODCount)
+	{
+		LODIndex = 0;
+	}
+	const FCachedMeshLOD& LOD = RenderState->LODs[LODIndex];
+	for (uint32 I = 0; I < LOD.NumSections; ++I)
+	{
+		const FCachedMeshSection& Section = RenderState->Sections[LOD.FirstSection + I];
+		FRenderPacket& Packet = Out.AddDefaulted_GetRef();
+		Packet.Proxy = this;
+		Packet.VertexFactory = &Mesh->GetVertexFactory(LODIndex);
+		Packet.IndexBuffer = Mesh->GetIndexBuffer(LODIndex);
+		Packet.Material = Section.Material;
+		Packet.StartIndex = Section.StartIndex;
+		Packet.IndexCount = Section.IndexCount;
+		Packet.LODIndex = static_cast<uint8>(LODIndex);
+	}
+}
+
 // 기본 Primitive는 동적 스냅샷이 필요하지 않다.
 void FPrimitiveSceneProxy::UpdateDynamicData()
 {

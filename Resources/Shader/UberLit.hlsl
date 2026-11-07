@@ -78,44 +78,6 @@ float3 GetDirectionalCascadeDebugColor(float3 WorldPos)
 }
 #endif
 
-#if defined(GPU_SKINNING)
-
-struct BoneMatrix
-{
-    matrix Matrix;
-};
-StructuredBuffer<BoneMatrix> BoneMatrices : register(t20);
-
-struct SkinWeights
-{
-	uint2 PackedBones; // [0] = b0 | b1 << 16, [1] = b2 | b3 << 16
-    float4 Weights;
-};
-StructuredBuffer<SkinWeights> SkinWeightsBuffer : register(t21);
-
-void ApplySkinning(inout VS_INPUT Input, uint VertexID)
-{
-	const SkinWeights Weights = SkinWeightsBuffer[VertexID];
-    const uint Bones[4] = { Weights.PackedBones.x & 0xFFFF, Weights.PackedBones.x >> 16, Weights.PackedBones.y & 0xFFFF, Weights.PackedBones.y >> 16 };
-    float3 Position = float3(0.0f, 0.0f, 0.0f);
-    float3 Normal = float3(0.0f, 0.0f, 0.0f);
-    float3 Tangent = float3(0.0f, 0.0f, 0.0f);
-	[unroll]
-    for (int k = 0; k < 4; ++k)
-    {
-	    const float W = Weights.Weights[k];
-        const matrix SkinMatrix = BoneMatrices[Bones[k]].Matrix;
-        Position += W * mul(float4(Input.Position, 1.0f), SkinMatrix).xyz;
-        Normal += W * mul(float4(Input.Normal, 0.0f), SkinMatrix).xyz;
-        Tangent += W * mul(float4(Input.Tangent.xyz, 0.0f), SkinMatrix).xyz;
-    }
-    Input.Position = Position;
-    Input.Normal = normalize(Normal);
-    Input.Tangent.xyz = normalize(Tangent);
-}
-
-#endif
-
 VS_OUTPUT mainVS(FVertexFactoryInput Input)
 {
     const FVertexFactoryIntermediates VFIntermediates = GetVertexFactoryIntermediates(Input);
