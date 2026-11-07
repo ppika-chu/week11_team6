@@ -28,7 +28,7 @@
 #include "Editor/Rendering/Outline.h"
 #include "Editor/Rendering/OutLineRenderer.h"
 #include "Editor/Outliner/OutlinerPanel.h"
-#include "Editor/SkeletalMeshEditor/SkeletalMeshEditorManager.h"
+#include "Editor/Persona/PersonaEditorManager.h"
 
 
 #include "PlayInEditorDataTypes.h"
@@ -182,7 +182,7 @@ private:
 	FRenderQueue ArrowQueue;
 	FOutlinerPanel* OutlinerPanel = nullptr;
 	FContentDrawerPanel* ContentDrawerPanel = nullptr;
-	FSkeletalMeshEditorManager* SkeletalMeshEditorManager = nullptr;
+	FPersonaEditorManager* PersonaEditorManager = nullptr;
 
 	UWorld* EditorWorld = nullptr;
 	UWorld* PlayWorld = nullptr;

@@ -14,6 +14,8 @@ public:
     void OnRender() override;
 
     void SelectBoneByName(const FString& BoneName) override;
+    URenderAsset* GetEditedAsset() const override;
+    TUniquePtr<FPersonaAssetEditor> CreateReplacementEditor(int32 NewEditorId) const override;
 
     // 선택한 본의 기즈모. 그리기(FGizmoRenderer)는 UEditorEngine이 한다
     const FGizmo* GetGizmo() const override { return &BoneGizmo; }

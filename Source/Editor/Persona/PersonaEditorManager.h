@@ -1,11 +1,13 @@
 #pragma once
 
 #include "Editor/EditorUI/EditorPanel.h"
-#include "Editor/SkeletalMeshEditor/SkeletalMeshEditor.h"
+#include "Editor/Persona/PersonaAssetEditor.h"
 
-// 열린 Skeletal Mesh Editor 창들을 관리
+class UAnimSequence;
+
+// 열린 에셋 에디터 창(Skeletal Mesh Editor, Animation Editor)들을 관리
 // FEditorUI에는 Manager만 등록
-class FSkeletalMeshEditorManager : public IEditorPanel
+class FPersonaEditorManager : public IEditorPanel
 {
 public:
 	// 등록할 때 1번 호출. 지금은 비어 있음
@@ -16,10 +18,11 @@ public:
 	// 모든 Editor를 그린다. 닫힌 Editor는 ImGui가 SRV를 다 그린 다음 Tick에서 삭제
 	void OnRender() override;
 	// Window 메뉴에 쓰이는 이름
-	const char* GetPanelName() const override { return "Skeletal Mesh Editors"; }
+	const char* GetPanelName() const override { return "Asset Editors"; }
 
 	// 같은 에셋이 열려 있으면 그 창에 Focus, 없으면 새로 생성
 	void OpenEditor(USkeletalMesh* Mesh);
+	void OpenEditor(UAnimSequence* Sequence);
 
 	// 열린 에디터를 모두 닫는다. 엔진 종료 시 UObject 일괄 삭제 전에 불러야 한다
 	void CloseAllEditors() { Editors.Reset(); }
@@ -31,6 +34,8 @@ public:
 	bool HasFocusedEditor() const;
 
 private:
+	// 같은 에셋이 열려 있으면 그 창에 Focus하고 true
+	bool FocusOpenEditor(const URenderAsset* Asset);
 	// 재임포트로 retired 된 에셋을 같은 키의 새 객체로 다시 연다. 창 ID가 키라 위치 / 도킹은 그대로
 	void ReopenRetiredEditors();
 

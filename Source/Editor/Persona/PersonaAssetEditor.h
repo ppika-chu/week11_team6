@@ -2,6 +2,7 @@
 #include "Editor/Gizmo/Gizmo.h"
 #include "Editor/Persona/AnimationEditorPreviewScene.h"
 
+class URenderAsset;
 class USkeletalMesh;
 class USkeletalMeshComponent;
 class FLineBatcher;
@@ -36,8 +37,12 @@ public:
 	bool IsFocused() const { return bIsFocused; }
 	// 다음 프레임에 이 창을 앞으로 가져오도록 예약
 	void Focus() { bFocusRequested = true; }
-	// 같은 에셋이 이미 열려 있는지 비교할 때 씀. 재임포트되면 IsRetired()가 true
+	// 프리뷰에 쓰는 메시. 재임포트되면 IsRetired()가 true
 	USkeletalMesh* GetMesh() const { return Mesh; }
+	// 이 창이 여는 에셋. 같은 에셋이 이미 열려 있는지 비교할 때 씀
+	virtual URenderAsset* GetEditedAsset() const = 0;
+	// 재임포트로 에셋이 교체되었을 때 새 객체로 다시 연다. 새 객체가 없으면 nullptr
+	virtual TUniquePtr<FPersonaAssetEditor> CreateReplacementEditor(int32 NewEditorId) const = 0;
 	// 재임포트로 에디터를 새로 만들 때 선택을 옮긴다. 본 구성이 바뀌었을 수 있어 이름으로
 	FString GetSelectedBoneName() const;
 	virtual void SelectBoneByName(const FString& BoneName);

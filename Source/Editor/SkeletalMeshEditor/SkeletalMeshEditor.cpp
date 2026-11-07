@@ -207,6 +207,26 @@ FSkeletalMeshEditor::FSkeletalMeshEditor(USkeletalMesh* InMesh, int32 InEditorId
 	GizmoLocalIcon = UAssetManager::Get().LoadTexture(EditorResourcePaths::GizmoLocalIcon);
 }
 
+URenderAsset* FSkeletalMeshEditor::GetEditedAsset() const
+{
+	return Mesh;
+}
+
+TUniquePtr<FPersonaAssetEditor> FSkeletalMeshEditor::CreateReplacementEditor(int32 NewEditorId) const
+{
+	// 키로 찾으면 retired는 건너뛰므로 새 객체가 나온다. 없으면(지워졌거나 다른 타입) 옛 객체를 계속 보여 준다
+	USkeletalMesh* NewMesh = UAssetManager::GetAssetByPath<USkeletalMesh>(Mesh->GetPath());
+	if (!NewMesh)
+	{
+		return nullptr;
+	}
+
+	// 포즈는 새 Bind Pose로 시작하고, 선택한 본은 이름이 남아 있으면 유지한다
+	auto NewEditor = MakeUnique<FSkeletalMeshEditor>(NewMesh, NewEditorId);
+	NewEditor->SelectBoneByName(GetSelectedBoneName());
+	return NewEditor;
+}
+
 void FSkeletalMeshEditor::SelectBoneByName(const FString& BoneName)
 {
 	FPersonaAssetEditor::SelectBoneByName(BoneName);

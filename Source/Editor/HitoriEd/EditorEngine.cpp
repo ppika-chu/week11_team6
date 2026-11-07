@@ -26,6 +26,7 @@
 #include "GameFramework/Actor/LightActorBase.h"
 
 #include "Asset/AssetManager.h"
+#include "Animation/AnimSequence.h"
 #include "Render/SkeletalMesh.h"
 #include "Render/RenderResourceManager.h"
 
@@ -195,13 +196,17 @@ bool UEditorEngine::Init()
 	EditorControlsPanel = EditorUI->AddEditorPanel<FEditorControlsPanel>();
 	ViewportsPanel = EditorUI->AddEditorPanel<FViewportsPanel>();
 	ContentDrawerPanel = EditorUI->AddEditorPanel<FContentDrawerPanel>();
-	SkeletalMeshEditorManager = EditorUI->AddEditorPanel<FSkeletalMeshEditorManager>();
+	PersonaEditorManager = EditorUI->AddEditorPanel<FPersonaEditorManager>();
 	// 콘텐츠 드로어에서 Skeletal Mesh를 더블클릭하면 뷰어로 연다 (언리얼 콘텐츠 브라우저 더블클릭)
 	ContentDrawerPanel->SetOpenAssetCallback([this](URenderAsset* Asset)
 		{
 			if (USkeletalMesh* SkeletalMesh = Cast<USkeletalMesh>(Asset))
 			{
-				SkeletalMeshEditorManager->OpenEditor(SkeletalMesh);
+				PersonaEditorManager->OpenEditor(SkeletalMesh);
+			}
+			else if (UAnimSequence* Sequence = Cast<UAnimSequence>(Asset))
+			{
+				PersonaEditorManager->OpenEditor(Sequence);
 			}
 		});
 	FSequencePanel* SequencePanel = EditorUI->AddEditorPanel<FSequencePanel>();
@@ -314,7 +319,7 @@ bool UEditorEngine::Init()
 	EditorControlsPanel->SetIsPlayingQuery([this]()
 		{ return IsPlaying(); });
 	EditorControlsPanel->SetKeyboardBlockedQuery([this]()
-		{ return SkeletalMeshEditorManager->HasFocusedEditor(); });
+		{ return PersonaEditorManager->HasFocusedEditor(); });
 	EditorControlsPanel->SetGizmo(Gizmo.get());
 	EditorControlsPanel->SetViewportsPanel(ViewportsPanel);
 
@@ -557,7 +562,7 @@ void UEditorEngine::BeginFrame(const float DeltaTime)
 	EditorControlsPanel->FEditorControlsPanel::DeltaTime = DeltaTime;
 
 	// 뷰어에 포커스가 있으면 레벨 액터를 지우지 않는다
-	if (!ImGui::GetIO().WantTextInput && !SkeletalMeshEditorManager->HasFocusedEditor() && FInputSystem::IsKeyPressed(EKeyCode::Delete))
+	if (!ImGui::GetIO().WantTextInput && !PersonaEditorManager->HasFocusedEditor() && FInputSystem::IsKeyPressed(EKeyCode::Delete))
 	{
 		DeleteActor(OutlinerPanel->GetSelectedActor());
 	}
@@ -574,7 +579,7 @@ void UEditorEngine::UpdatePIEInput()
 	}
 
 	// 이름 편집의 취소나 FBX 뷰어 조작까지 PIE 종료로 받지 않는다.
-	if (!ImGui::GetIO().WantTextInput && !SkeletalMeshEditorManager->HasFocusedEditor() && Stop.Shortcut.IsPressedThisFrame())
+	if (!ImGui::GetIO().WantTextInput && !PersonaEditorManager->HasFocusedEditor() && Stop.Shortcut.IsPressedThisFrame())
 	{
 		Stop.TryExecute();
 		return;
@@ -786,7 +791,7 @@ void UEditorEngine::RenderMultipleViewports()
 
 void UEditorEngine::PrepareSkeletalMeshPreviews(TArray<const FPersonaAssetEditor*>& OutPreviews, TArray<FSceneView>& OutViews)
 {
-	SkeletalMeshEditorManager->GetPreviewsToRender(OutPreviews);
+	PersonaEditorManager->GetPreviewsToRender(OutPreviews);
 
 	for (const FPersonaAssetEditor* Preview : OutPreviews)
 	{
@@ -1433,7 +1438,7 @@ void UEditorEngine::PreExit()
 {
 	// 프리뷰 월드도 UObject라 FEngineLoop::Exit의 일괄 삭제에 먼저 지워진다.
 	// 그 뒤 EditorUI 소멸 때 에디터가 같은 월드를 다시 지우지 않도록 여기서 먼저 닫는다.
-	SkeletalMeshEditorManager->CloseAllEditors();
+	PersonaEditorManager->CloseAllEditors();
 
 	EndPlayMap();
 	EditorWorld->ClearWorld();
