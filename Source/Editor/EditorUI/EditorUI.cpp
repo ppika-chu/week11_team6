@@ -413,7 +413,6 @@ void FEditorUI::DrawFbxImportDialog()
 		ImGui::PushID("AnimationFbx");
 		ImGui::Checkbox("Import Animations", &FbxOptions.bImportAnimations);
 		ImGui::BeginDisabled(!FbxOptions.bImportAnimations);
-		ImGui::Checkbox("Import Bone Tracks", &FbxOptions.bImportBoneTracks);
 		int AnimationRange = static_cast<int>(FbxOptions.AnimationRange);
 		if (ImGui::Combo("Animation Length", &AnimationRange, "Source Timeline\0Animated Time\0Set Range\0"))
 			FbxOptions.AnimationRange = static_cast<EInterchangeAnimationRange>(AnimationRange);
@@ -424,12 +423,6 @@ void FEditorUI::DrawFbxImportDialog()
 			FbxOptions.FrameImportRangeMin = std::max(FrameImportRange[0], 0);
 			FbxOptions.FrameImportRangeMax = std::max(FrameImportRange[1], 0);
 		}
-		ImGui::EndDisabled();
-		ImGui::Checkbox("Use 30Hz To Bake Bone Animation", &FbxOptions.bUse30HzToBakeBoneAnimation);
-		ImGui::BeginDisabled(FbxOptions.bUse30HzToBakeBoneAnimation);
-		if (ImGui::InputInt("Custom Bone Animation Sample Rate", &FbxOptions.CustomBoneAnimationSampleRate))
-			FbxOptions.CustomBoneAnimationSampleRate = std::clamp(FbxOptions.CustomBoneAnimationSampleRate, 0, 48000);
-		if (ImGui::IsItemHovered()) ImGui::SetTooltip("Keys per second. 0 uses the frame rate stored in the FBX file.");
 		ImGui::EndDisabled();
 		int FrameAlignment = static_cast<int>(FbxOptions.FrameAlignment);
 		if (ImGui::Combo("Frame Alignment", &FrameAlignment, "None\0Snap To Floor\0Snap To Closest Frame Boundary\0Snap To Ceiling\0"))

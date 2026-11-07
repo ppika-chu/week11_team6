@@ -2,11 +2,6 @@
 #include "Transform.h"
 #include <cmath>
 
-namespace
-{
-	constexpr float ZERO_ANIMWEIGHT_THRESH = 0.00001f;
-}
-
 FTransform::FTransform(FVector InL, FVector InS, FQuat InR)
 {
 	Location = InL;
@@ -42,6 +37,13 @@ FTransform FTransform::Blend(const FTransform& A, const FTransform& B, float Alp
 	Result.Scale = A.Scale + (B.Scale - A.Scale) * Weight;
 	Result.Rotation = BlendedRotation.Normalized();
 	return Result;
+}
+
+bool FTransform::ContainsNaN() const
+{
+	return !std::isfinite(Location.X) || !std::isfinite(Location.Y) || !std::isfinite(Location.Z)
+		|| !std::isfinite(Scale.X) || !std::isfinite(Scale.Y) || !std::isfinite(Scale.Z)
+		|| !std::isfinite(Rotation.X) || !std::isfinite(Rotation.Y) || !std::isfinite(Rotation.Z) || !std::isfinite(Rotation.W);
 }
 
 FMatrix FTransform::GetLocalMatrix() const

@@ -41,12 +41,9 @@ struct FFbxImportOptions
 	bool bCombineSkeletalMeshes = true;
 	bool bUseT0AsRefPose = false; // 켜면 바인드 포즈가 유효해도 0초 자세를 기본 자세로 쓴다.
 	bool bImportAnimations = true;
-	bool bImportBoneTracks = true;
 	EInterchangeAnimationRange AnimationRange = EInterchangeAnimationRange::Timeline;
 	int32 FrameImportRangeMin = 0;
 	int32 FrameImportRangeMax = 0;
-	bool bUse30HzToBakeBoneAnimation = false;
-	int32 CustomBoneAnimationSampleRate = 0; // 0이면 FBX 파일의 프레임레이트를 쓴다.
 	EInterchangeFrameAlignment FrameAlignment = EInterchangeFrameAlignment::None;
 };
 

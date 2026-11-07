@@ -291,11 +291,9 @@ struct FCornerHash
 constexpr double DEFAULT_SAMPLERATE = 30.0;
 constexpr double MINIMUM_ANIMATION_LENGTH = 1.0 / DEFAULT_SAMPLERATE;
 
-// 옵션과 FBX 파일 프레임레이트로 초당 키 수를 정한다. (UE UInterchangeGenericAnimationPipeline)
-double GetBoneAnimationSampleRate(const FFbxImportOptions& Options, double FrameRate)
+// FBX 파일 프레임레이트를 초당 키 수로 쓴다. (UE UInterchangeGenericAnimationPipeline)
+double GetBoneAnimationSampleRate(double FrameRate)
 {
-	if (Options.bUse30HzToBakeBoneAnimation) return DEFAULT_SAMPLERATE;
-	if (Options.CustomBoneAnimationSampleRate > 0) return static_cast<double>(Options.CustomBoneAnimationSampleRate);
 	return FrameRate > 0.0 ? FrameRate : DEFAULT_SAMPLERATE;
 }
 
@@ -1317,7 +1315,7 @@ bool FImport::GetAnimationRange(FbxNode* RootNode, FbxAnimStack* Stack, double S
 // 움직이는 본이 있는 클립마다 일정한 간격으로 본의 값을 물어 키를 만든다. (UE FFbxScene::AddAnimation, FFbxAnimation)
 void FImport::CookAnimations(const FRig& Rig)
 {
-	const double SampleRate = GetBoneAnimationSampleRate(Options, FrameRate);
+	const double SampleRate = GetBoneAnimationSampleRate(FrameRate);
 	FbxTime TimeStep = 0;
 	TimeStep.SetSecondDouble(1.0 / SampleRate);
 
@@ -1440,7 +1438,7 @@ bool FImport::Run()
 		Group.Items.push_back(&Item);
 	}
 	for (const auto& [Key, Group] : Groups) if (!CookMesh(Group)) return false;
-	if (Options.bImportAnimations && Options.bImportBoneTracks)
+	if (Options.bImportAnimations)
 		for (const auto& [Path, Rig] : Rigs) if (Used.contains(Rig.Root)) CookAnimations(Rig);
 	// 클립이 하나면 "파일이름_Anim", 여러 개면 클립 이름을 쓴다. (UE InterchangeGenericAssetsPipeline)
 	for (auto& Asset : Animations)
@@ -1498,7 +1496,7 @@ bool FFbxImporter::Cook(const FString& SourcePath, const FFbxImportOptions& Opti
 		{
 			FbxAnimStack* Stack = Scene->GetSrcObject<FbxAnimStack>(StackIndex);
 			if (Stack->GetMemberCount<FbxAnimLayer>() > 1)
-				MergeAllLayerAnimation(Scene, Stack, static_cast<int32>(std::lround(GetBoneAnimationSampleRate(Options, FbxFrameRate))));
+				MergeAllLayerAnimation(Scene, Stack, static_cast<int32>(std::lround(GetBoneAnimationSampleRate(FbxFrameRate))));
 		}
 		// UE의 Z-up/-ParityOdd 기준을 사용한다. Deep 변환으로 Bake off의 로컬 기하도 같은 축이 된다.
 		FbxAxisSystem Target(FbxAxisSystem::eZAxis, static_cast<FbxAxisSystem::EFrontVector>(-FbxAxisSystem::eParityOdd), FbxAxisSystem::eRightHanded);
