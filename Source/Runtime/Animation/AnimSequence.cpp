@@ -1,6 +1,6 @@
 #include "EnginePCH.h"
 #include "AnimSequence.h"
-#include "Animation/BonePose.h"
+#include "Animation/AnimPose.h"
 #include "Animation/Skeleton.h"
 
 namespace
@@ -40,7 +40,12 @@ namespace
 	}
 }
 
-void UAnimSequence::GetBonePose(FCompactPose& OutPose, const FAnimExtractContext& Context) const
+void UAnimSequence::GetAnimationPose(FAnimPose& OutPose, const FAnimExtractContext& ExtractionContext) const
+{
+	GetBonePose(OutPose, ExtractionContext);
+}
+
+void UAnimSequence::GetBonePose(FAnimPose& OutPose, const FAnimExtractContext& Context) const
 {
 	const USkeleton* Skeleton = GetSkeleton();
 	if (!Skeleton)
@@ -48,7 +53,7 @@ void UAnimSequence::GetBonePose(FCompactPose& OutPose, const FAnimExtractContext
 		return;
 	}
 
-	OutPose.ResetToRefPose(Skeleton->RefSkeleton);
+	OutPose.LocalTransforms = Skeleton->RefSkeleton.RefBonePose;
 	if (!DataModel)
 	{
 		return;
@@ -60,14 +65,14 @@ void UAnimSequence::GetBonePose(FCompactPose& OutPose, const FAnimExtractContext
 
 	for (const FBoneAnimationTrack& AnimationTrack : DataModel->BoneAnimationTracks)
 	{
-		if (AnimationTrack.BoneTreeIndex < 0 || AnimationTrack.BoneTreeIndex >= OutPose.Bones.Num())
+		if (AnimationTrack.BoneTreeIndex < 0 || AnimationTrack.BoneTreeIndex >= OutPose.LocalTransforms.Num())
 		{
 			continue;
 		}
 
 		const FRawAnimSequenceTrack& Track = AnimationTrack.InternalTrackData;
 		const FTransform Key1 = ExtractTransformForKey(Track, KeyIndex1);
-		OutPose.Bones[AnimationTrack.BoneTreeIndex] = Alpha > 0.0f
+		OutPose.LocalTransforms[AnimationTrack.BoneTreeIndex] = Alpha > 0.0f
 			? FTransform::Blend(Key1, ExtractTransformForKey(Track, KeyIndex2), Alpha)
 			: Key1;
 	}

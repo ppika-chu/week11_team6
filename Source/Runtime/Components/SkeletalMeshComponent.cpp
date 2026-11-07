@@ -1,5 +1,8 @@
 #include "EnginePCH.h"
 #include "SkeletalMeshComponent.h"
+#include "Animation/AnimInstance.h"
+#include "Animation/AnimSingleNodeInstance.h"
+#include "Animation/AnimPose.h"
 #include "Asset/AssetManager.h"
 #include "Render/SkeletalMesh.h"
 
@@ -12,13 +15,191 @@ USkeletalMeshComponent::USkeletalMeshComponent()
 
 USkeletalMeshComponent::~USkeletalMeshComponent()
 {
+	ClearAnimScriptInstance();
+}
+
+void USkeletalMeshComponent::SetAnimInstanceClass(UClass* NewClass)
+{
+	if (NewClass && (!NewClass->IsChildOf(UAnimInstance::StaticClass()) || !NewClass->Constructor))
+	{
+		return;
+	}
+	if (AnimClass == NewClass && AnimationMode == EAnimationMode::AnimationClass)
+	{
+		return;
+	}
+
+	AnimClass = NewClass;
+	AnimationMode = EAnimationMode::AnimationClass;
+	ClearAnimScriptInstance();
+	InitAnim(true);
+}
+
+void USkeletalMeshComponent::InitAnim(bool bForceReinit)
+{
+	if (IsRegistered() && SkeletalMesh)
+	{
+		InitializeAnimScriptInstance(bForceReinit);
+	}
+}
+
+bool USkeletalMeshComponent::InitializeAnimScriptInstance(bool bForceReinit)
+{
+	UClass* InstanceClass = AnimationMode == EAnimationMode::AnimationSingleNode ? UAnimSingleNodeInstance::StaticClass() : AnimClass;
+	if (!InstanceClass)
+	{
+		return false;
+	}
+	if (!AnimScriptInstance)
+	{
+		AnimScriptInstance = NewObject<UAnimInstance>(this, InstanceClass);
+		bForceReinit = true;
+	}
+	if (AnimScriptInstance && (bForceReinit || !AnimScriptInstance->IsInitialized()))
+	{
+		AnimScriptInstance->InitializeAnimation();
+		return true;
+	}
+	return false;
+}
+
+void USkeletalMeshComponent::ClearAnimScriptInstance()
+{
+	// 전역 객체 정리로 Instance가 먼저 삭제되었을 수 있으므로 생존 여부를 확인한다.
+	if (AnimScriptInstance && FindLiveObjectByAddress(AnimScriptInstance))
+	{
+		AnimScriptInstance->UninitializeAnimation();
+		delete AnimScriptInstance;
+	}
+	AnimScriptInstance = nullptr;
+}
+
+void USkeletalMeshComponent::SetAnimationMode(EAnimationMode::Type InAnimationMode, bool bForceInitAnimScriptInstance)
+{
+	const bool bNeedChange = AnimationMode != InAnimationMode;
+	if (bNeedChange)
+	{
+		AnimationMode = InAnimationMode;
+		ClearAnimScriptInstance();
+	}
+	if (bNeedChange || (AnimationMode == EAnimationMode::AnimationClass && bForceInitAnimScriptInstance))
+	{
+		InitAnim(true);
+	}
+}
+
+UAnimSingleNodeInstance* USkeletalMeshComponent::GetSingleNodeInstance() const
+{
+	return Cast<UAnimSingleNodeInstance>(AnimScriptInstance);
+}
+
+void USkeletalMeshComponent::PlayAnimation(UAnimationAsset* NewAnimToPlay, bool bLooping)
+{
+	SetAnimationMode(EAnimationMode::AnimationSingleNode);
+	SetAnimation(NewAnimToPlay);
+	Play(bLooping);
+}
+
+void USkeletalMeshComponent::SetAnimation(UAnimationAsset* NewAnimToPlay)
+{
+	if (auto* Instance = GetSingleNodeInstance())
+	{
+		Instance->SetAnimationAsset(NewAnimToPlay, false);
+		Instance->SetPlaying(false);
+	}
+}
+
+void USkeletalMeshComponent::Play(bool bLooping)
+{
+	if (auto* Instance = GetSingleNodeInstance())
+	{
+		Instance->SetPlaying(true);
+		Instance->SetLooping(bLooping);
+	}
+}
+
+void USkeletalMeshComponent::Stop()
+{
+	if (auto* Instance = GetSingleNodeInstance())
+	{
+		Instance->SetPlaying(false);
+	}
+}
+
+bool USkeletalMeshComponent::IsPlaying() const
+{
+	const auto* Instance = GetSingleNodeInstance();
+	return Instance && Instance->IsPlaying();
+}
+
+void USkeletalMeshComponent::SetPosition(float InPos, bool bFireNotifies)
+{
+	if (auto* Instance = GetSingleNodeInstance())
+	{
+		Instance->SetPosition(InPos, bFireNotifies);
+	}
+}
+
+float USkeletalMeshComponent::GetPosition() const
+{
+	const auto* Instance = GetSingleNodeInstance();
+	return Instance ? Instance->GetCurrentTime() : 0.0f;
+}
+
+void USkeletalMeshComponent::SetPlayRate(float Rate)
+{
+	if (auto* Instance = GetSingleNodeInstance())
+	{
+		Instance->SetPlayRate(Rate);
+	}
+}
+
+float USkeletalMeshComponent::GetPlayRate() const
+{
+	const auto* Instance = GetSingleNodeInstance();
+	return Instance ? Instance->GetPlayRate() : 0.0f;
+}
+
+void USkeletalMeshComponent::OnRegister()
+{
+	EnsurePoseInitialized();
+	Super::OnRegister();
+	InitAnim(true);
+}
+
+void USkeletalMeshComponent::OnUnregister()
+{
+	if (AnimScriptInstance)
+	{
+		AnimScriptInstance->UninitializeAnimation();
+	}
+	Super::OnUnregister();
+}
+
+void USkeletalMeshComponent::InitializeComponent()
+{
+	Super::InitializeComponent();
+	InitAnim(false);
 }
 
 void USkeletalMeshComponent::TickComponent(float DeltaTime)
 {
 	Super::TickComponent(DeltaTime);
 
-	// TODO: 애니메이션 평가 → BoneSpaceTransforms → RefreshBoneTransforms
+	TickAnimation(DeltaTime);
+	if (IsRegistered() && AnimScriptInstance && AnimScriptInstance->IsInitialized())
+	{
+		RefreshBoneTransforms();
+	}
+}
+
+void USkeletalMeshComponent::TickAnimation(float DeltaTime)
+{
+	EnsurePoseInitialized();
+	if (IsRegistered() && SkeletalMesh && AnimScriptInstance)
+	{
+		AnimScriptInstance->UpdateAnimation(DeltaTime);
+	}
 }
 
 void USkeletalMeshComponent::SetBoneLocalTransform(int32 BoneIndex, const FTransform& LocalTransform)
@@ -30,7 +211,8 @@ void USkeletalMeshComponent::SetBoneLocalTransform(int32 BoneIndex, const FTrans
 	}
 
 	BoneSpaceTransforms[BoneIndex] = LocalTransform;
-	RefreshBoneTransforms();
+	FillComponentSpaceTransforms(BoneSpaceTransforms);
+	FinalizeBoneTransform();
 }
 
 void USkeletalMeshComponent::SetBoneRotation(int32 BoneIndex, const FRotator& Rotation)
@@ -47,7 +229,8 @@ void USkeletalMeshComponent::SetBoneRotation(int32 BoneIndex, const FRotator& Ro
 	const FMatrix Rotate = Rotation.Quaternion().ToFMatrix();
 	BoneSpaceTransforms[BoneIndex] = Ref;
 	BoneSpaceTransforms[BoneIndex].Rotation = MatrixToRotator(Rotate * Ref.Rotation.ToFMatrix());
-	RefreshBoneTransforms();
+	FillComponentSpaceTransforms(BoneSpaceTransforms);
+	FinalizeBoneTransform();
 }
 
 void USkeletalMeshComponent::ResetToRefPose()
@@ -59,7 +242,8 @@ void USkeletalMeshComponent::ResetToRefPose()
 	}
 
 	BoneSpaceTransforms = SkeletalMesh->RefSkeleton.RefBonePose;
-	RefreshBoneTransforms();
+	FillComponentSpaceTransforms(BoneSpaceTransforms);
+	FinalizeBoneTransform();
 }
 
 void USkeletalMeshComponent::RefreshBoneTransforms()
@@ -69,12 +253,39 @@ void USkeletalMeshComponent::RefreshBoneTransforms()
 		return;
 	}
 
+	if (AnimScriptInstance && AnimScriptInstance->IsInitialized())
+	{
+		FAnimPose EvaluatedPose;
+		AnimScriptInstance->EvaluateAnimation(EvaluatedPose);
+		if (!FinalizePoseEvaluationResult(EvaluatedPose))
+		{
+			return;
+		}
+	}
+
 	FillComponentSpaceTransforms(BoneSpaceTransforms);
 	FinalizeBoneTransform();
 }
 
+bool USkeletalMeshComponent::FinalizePoseEvaluationResult(const FAnimPose& InFinalPose)
+{
+	if (!SkeletalMesh || InFinalPose.LocalTransforms.Num() != SkeletalMesh->RefSkeleton.RefBonePose.Num())
+	{
+		HTR_LOG(Error, "[Skel] Evaluated pose must contain every mesh bone");
+		return false;
+	}
+
+	BoneSpaceTransforms = InFinalPose.LocalTransforms;
+	for (FTransform& Transform : BoneSpaceTransforms)
+	{
+		Transform.Rotation = Transform.Rotation.Normalized();
+	}
+	return true;
+}
+
 void USkeletalMeshComponent::InitPoseFromMesh()
 {
+	ClearAnimScriptInstance();
 	// 임포터가 저장한 기준 자세(FTransform, 부모 상대)를 시작 포즈로 준비한 뒤
 	// 부모가 배열 크기와 렌더 메시를 만들고 RefreshBoneTransforms를 부른다
 	if (SkeletalMesh)
@@ -87,4 +298,5 @@ void USkeletalMeshComponent::InitPoseFromMesh()
 	}
 
 	Super::InitPoseFromMesh();
+	InitAnim(true);
 }

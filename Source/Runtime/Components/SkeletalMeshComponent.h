@@ -2,9 +2,19 @@
 
 #include "SkinnedMeshComponent.h"
 
-// 언리얼 USkeletalMeshComponent에 해당한다.
-// 부모 기준 로컬 포즈(BoneSpaceTransforms)를 가지고 포즈를 만든다. 스키닝과 렌더는 USkinnedMeshComponent가 맡는다.
-// 나중에 애니메이션(AnimInstance)과 물리 바디가 여기에 붙는다.
+class UAnimInstance;
+class UAnimSingleNodeInstance;
+class UAnimationAsset;
+struct FAnimPose;
+
+namespace EAnimationMode
+{
+	// 지정한 C++ AnimInstance 클래스를 사용하거나 단일 Asset 재생 Instance를 사용한다.
+	enum Type { AnimationClass, AnimationSingleNode };
+}
+
+// AnimInstance를 생성·정리하고 평가 결과를 BoneSpaceTransforms에 반영한다.
+// Component Space 변환·스키닝·렌더 데이터 갱신은 USkinnedMeshComponent의 처리를 사용한다.
 class USkeletalMeshComponent : public USkinnedMeshComponent
 {
 	DECLARE_CLASS(USkeletalMeshComponent, USkinnedMeshComponent)
@@ -13,6 +23,28 @@ public:
 	virtual ~USkeletalMeshComponent() override;
 
 	virtual void TickComponent(float DeltaTime) override;
+	virtual void InitializeComponent() override;
+
+	// Instance 구성과 갱신 — Class·재생 모드에 맞는 Instance를 준비하고 Update를 호출한다.
+	void SetAnimInstanceClass(UClass* NewClass);
+	UAnimInstance* GetAnimInstance() const { return AnimScriptInstance; }
+	void InitAnim(bool bForceReinit);
+	void TickAnimation(float DeltaTime);
+	void SetAnimationMode(EAnimationMode::Type InAnimationMode, bool bForceInitAnimScriptInstance = true);
+	EAnimationMode::Type GetAnimationMode() const { return AnimationMode; }
+
+	// 단일 Asset 재생 제어 — PlayAnimation은 SingleNode 모드로 전환한다.
+	// SetAnimation부터 GetPlayRate까지는 SingleNodeInstance가 있을 때만 상태를 제어·조회한다.
+	UAnimSingleNodeInstance* GetSingleNodeInstance() const;
+	void PlayAnimation(UAnimationAsset* NewAnimToPlay, bool bLooping);
+	void SetAnimation(UAnimationAsset* NewAnimToPlay);
+	void Play(bool bLooping);
+	void Stop();
+	bool IsPlaying() const;
+	void SetPosition(float InPos, bool bFireNotifies = true);
+	float GetPosition() const;
+	void SetPlayRate(float Rate);
+	float GetPlayRate() const;
 
 	// 부모 기준 자세 하나를 바꾸고 다시 누적 + 스키닝한다
 	void SetBoneLocalTransform(int32 BoneIndex, const FTransform& LocalTransform);
@@ -21,16 +53,24 @@ public:
 
 	void ResetToRefPose();
 
-	// 부모 기준. 언리얼 USkeletalMeshComponent처럼 FTransform으로 두어 에디터가 위치 / 회전 / 스케일을 그대로 고친다
+	// 부모 Bone 기준 Local Transform 배열. 편집과 Pose 평가 결과 반영에 사용한다.
 	const TArray<FTransform>& GetBoneSpaceTransforms() const { return BoneSpaceTransforms; }
 
 	virtual void RefreshBoneTransforms() override;
 
 protected:
+	virtual void OnRegister() override;
+	virtual void OnUnregister() override;
 	virtual void InitPoseFromMesh() override;
+	bool InitializeAnimScriptInstance(bool bForceReinit);
+	void ClearAnimScriptInstance();
+	bool FinalizePoseEvaluationResult(const FAnimPose& InFinalPose);
 
 private:
 	bool IsValidBoneIndex(int32 BoneIndex) const { return BoneIndex >= 0 && BoneIndex < BoneSpaceTransforms.Num(); }
 
 	TArray<FTransform> BoneSpaceTransforms;
+	UClass* AnimClass = nullptr;
+	EAnimationMode::Type AnimationMode = EAnimationMode::AnimationClass;
+	UAnimInstance* AnimScriptInstance = nullptr; // 이 Component가 생성하고 ClearAnimScriptInstance에서 정리하는 Instance.
 };

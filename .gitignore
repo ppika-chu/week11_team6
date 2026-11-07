@@ -456,3 +456,6 @@ editor.ini
 
 # 패키징 결과물 (Executable 빌드 + 에셋 복사본)
 /TestExport/
+
+# 로컬 검증 테스트
+/Tests/
