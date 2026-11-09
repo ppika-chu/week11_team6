@@ -7,6 +7,7 @@
 #include "Asset/AssetManager.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Editor/HitoriEd/EditorResourcePaths.h"
+#include "Editor/Persona/DebugSkelMeshComponent.h"
 #include "Render/Mesh.h"
 #include "Render/SkeletalMesh.h"
 
