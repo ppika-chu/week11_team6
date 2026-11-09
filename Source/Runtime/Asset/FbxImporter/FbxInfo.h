@@ -77,6 +77,7 @@ struct FFbxAnimationData
 	int32 NumberOfFrames = 0; // 키 사이 구간 수
 	int32 NumberOfKeys = 0;
 	TArray<FBoneAnimationTrack> Tracks;
+	FString NotifyData = "{\"Notifies\":[]}"; // Sequence 편집 데이터. Notify 객체 설정은 기존 JSON 직렬화를 사용한다.
 };
 
 // Cook 결과다. SDK 포인터/GPU 리소스는 포함하지 않는다. 한 항목이 한 .fbxbin이다.

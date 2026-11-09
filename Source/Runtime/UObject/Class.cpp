@@ -8,6 +8,21 @@ UClass::UClass()
 {
 }
 
+const FFunction* UClass::FindFunctionByName(const FName& FunctionName) const
+{
+	for (const UClass* Class = this; Class; Class = Class->Super)
+	{
+		for (const FFunction& Function : Class->Functions)
+		{
+			if (Function.Name == FunctionName)
+			{
+				return &Function;
+			}
+		}
+	}
+	return nullptr;
+}
+
 bool UClass::IsChildOf(const UClass* BaseClass) const
 {
 	if (!BaseClass)

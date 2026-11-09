@@ -1,12 +1,13 @@
-#pragma once
+﻿#pragma once
 #include "Editor/Persona/PersonaAssetEditor.h"
 
 class UAnimSequence;
 class UAnimSingleNodeInstance;
 class UTexture2D;
+class UClass;
 
 // 클립 하나를 재생해 보는 창. 언리얼 FAnimationEditor에 해당한다.
-// 패널: 스켈레톤 트리 | 뷰포트 위, 타임라인 아래. 디테일 패널은 아직 없다.
+// 패널: 스켈레톤 트리 | 뷰포트·타임라인 | Notify 목록·편집.
 class FAnimationEditor : public FPersonaAssetEditor
 {
 public:
@@ -24,8 +25,16 @@ private:
 
 	// 언리얼 SAnimTimeline. 레벨 시퀀서(SequencePanel)와 같은 ImNeoSequencer로 그리고, 아래에 재생 버튼
 	void DrawTimeline();
-	// 언리얼 FAnimTimelineTrack_Notifies. 클립의 Notifies를 키 모양으로 표시만 한다. 이름은 툴팁
-	void DrawNotifiesTrack(float FrameRate) const;
+	// Notify 선택은 타임라인과 목록이 공유하며, 배치 값은 Sequence에 저장한다.
+	void DrawNotifiesTrack(float FrameRate);
+	void DrawNotifyEditor();
+	// 시연용 이름 Notify 수신 Instance로 바꾸되 프리뷰 재생 설정은 유지한다.
+	void SetNotifyDemoEnabled(bool bEnabled);
+	void CreateNewNotify(UClass* NotifyClass);
+	void PrepareNotifyEdit();
+	bool SaveNotifies();
+	bool DiscardNotifyChanges();
+	void RefreshNotifyOffsets();
 	// 언리얼 SAnimTimelineTransportControls. 처음 / 이전 프레임 / 역재생 / 재생 / 다음 프레임 / 끝 / 반복, 오른쪽에 속도
 	void DrawTransportControls();
 	// 속도 메뉴. 언리얼 타임라인 오른쪽의 x1.0 메뉴
@@ -50,6 +59,14 @@ private:
 	FString TreePanelTitle;
 	FString ViewportPanelTitle;
 	FString TimelinePanelTitle;
+	FString NotifyPanelTitle;
+	int32 SelectedNotifyIndex = -1;
+	// 한 번 누르고 끄는 동안 시작 시각과 마우스 위치를 유지한다.
+	int32 DraggedNotifyIndex = -1;
+	float NotifyDragStartX = 0.0f;
+	float NotifyDragStartTime = 0.0f;
+	bool bNotifyDirty = false;
+	FString SaveMessage;
 
 	// 재생 버튼 아이콘. 소유는 UAssetManager. 파일이 없으면 글자 버튼
 	UTexture2D* ToFrontIcon = nullptr;

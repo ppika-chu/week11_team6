@@ -1,11 +1,19 @@
-#include "EnginePCH.h"
+﻿#include "EnginePCH.h"
 
 #include "Editor/AnimationEditor/AnimationEditor.h"
 #include "Editor/EditorUI/EditorUI.h"
 #include "Editor/EditorUI/EditorUIScale.h"
 
 #include "Animation/AnimSequence.h"
+#include "Animation/AnimNotifies/AnimNotify.h"
+#include "Animation/AnimNotifies/AnimNotifyState.h"
+#include "Asset/FbxImporter/FbxAssetLoader.h"
+#include "Asset/FbxImporter/FbxAssetBake.h"
+#include "Asset/FbxImporter/FbxPath.h"
+#include "Editor/HitoriEd/EditorEngine.h"
+#include "UObject/UObjectHash.h"
 #include "Animation/AnimSingleNodeInstance.h"
+#include "Animation/Samples/AnimNotifyDemoInstance.h"
 #include "Animation/Skeleton.h"
 #include "Asset/AssetManager.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -24,7 +32,7 @@
 namespace
 {
 	// 저장된 배치가 없을 때의 기본 배치: 왼쪽 트리 | 가운데 뷰포트 위, 타임라인 아래
-	void BuildDefaultPanelLayout(ImGuiID DockId, const ImVec2& Size, const char* TreePanel, const char* ViewportPanel, const char* TimelinePanel)
+	void BuildDefaultPanelLayout(ImGuiID DockId, const ImVec2& Size, const char* TreePanel, const char* ViewportPanel, const char* TimelinePanel, const char* NotifyPanel)
 	{
 		const float TreeWidth = EditorUIScale::Px(250.0f);
 		const float TimelineHeight = EditorUIScale::Px(180.0f);
@@ -36,9 +44,11 @@ namespace
 
 		ImGuiID CenterId = DockId;
 		const ImGuiID TreeId = ImGui::DockBuilderSplitNode(CenterId, ImGuiDir_Left, TreeRatio, nullptr, &CenterId);
+		const ImGuiID NotifyId = ImGui::DockBuilderSplitNode(CenterId, ImGuiDir_Right, 0.3f, nullptr, &CenterId);
 		const ImGuiID TimelineId = ImGui::DockBuilderSplitNode(CenterId, ImGuiDir_Down, TimelineRatio, nullptr, &CenterId);
 
 		ImGui::DockBuilderDockWindow(TreePanel, TreeId);
+		ImGui::DockBuilderDockWindow(NotifyPanel, NotifyId);
 		ImGui::DockBuilderDockWindow(ViewportPanel, CenterId);
 		ImGui::DockBuilderDockWindow(TimelinePanel, TimelineId);
 		ImGui::DockBuilderFinish(DockId);
@@ -95,6 +105,7 @@ FAnimationEditor::FAnimationEditor(UAnimSequence* InSequence, USkeletalMesh* InP
 	, TreePanelTitle(std::format("Skeleton Tree###AnimSkeletonTree_{}", InSequence->GetPath()))
 	, ViewportPanelTitle(std::format("Viewport###AnimViewport_{}", InSequence->GetPath()))
 	, TimelinePanelTitle(std::format("Timeline###AnimTimeline_{}", InSequence->GetPath()))
+	, NotifyPanelTitle(std::format("Notifies###AnimNotifies_{}", InSequence->GetPath()))
 {
 	// 시각 진행과 포즈 계산은 프리뷰 월드의 TickComponent가 한다
 	PreviewScene->GetPreviewComponent()->PlayAnimation(Sequence, true);
@@ -140,6 +151,10 @@ UAnimSingleNodeInstance* FAnimationEditor::GetPreviewInstance() const
 
 void FAnimationEditor::OnRender()
 {
+	if (!ImGui::IsMouseDown(ImGuiMouseButton_Left))
+	{
+		DraggedNotifyIndex = -1;
+	}
 	if (bFocusRequested)
 	{
 		ImGui::SetNextWindowFocus();
@@ -151,8 +166,46 @@ void FAnimationEditor::OnRender()
 	ImGui::SetNextWindowClass(&FEditorUI::GetRootWindowClass());
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
 	const bool bHostVisible = ImGui::Begin(WindowTitle.c_str(), &bIsOpen,
-		ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+		ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse | (bNotifyDirty ? ImGuiWindowFlags_UnsavedDocument : 0));
 	ImGui::PopStyleVar();
+	if (!bIsOpen && bNotifyDirty)
+	{
+		bIsOpen = true;
+		ImGui::OpenPopup("Unsaved Notifies");
+	}
+	if (ImGui::BeginPopupModal("Unsaved Notifies", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+	{
+		ImGui::TextUnformatted("Save notify changes before closing?");
+		if (ImGui::Button("Save and Close") && SaveNotifies())
+		{
+			bIsOpen = false;
+			ImGui::CloseCurrentPopup();
+		}
+		ImGui::SameLine();
+		const UEditorEngine* Editor = Cast<UEditorEngine>(GEngine);
+		const bool bPlayingPIE = Editor && Editor->IsPlaying();
+		ImGui::BeginDisabled(bPlayingPIE);
+		if (ImGui::Button("Discard and Close") && DiscardNotifyChanges())
+		{
+			bIsOpen = false;
+			ImGui::CloseCurrentPopup();
+		}
+		ImGui::EndDisabled();
+		if (bPlayingPIE && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+		{
+			ImGui::SetTooltip("Stop PIE to discard notify changes.");
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Keep Editing"))
+		{
+			ImGui::CloseCurrentPopup();
+		}
+		if (!SaveMessage.empty())
+		{
+			ImGui::TextWrapped("%s", SaveMessage.c_str());
+		}
+		ImGui::EndPopup();
+	}
 	bool bAnyPanelFocused = bHostVisible && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
 
 	// 이 에셋의 패널끼리만 붙는 도킹 공간. ID가 창 ID에서 나오므로 재임포트해도 배치가 유지된다
@@ -162,7 +215,7 @@ void FAnimationEditor::OnRender()
 	PanelClass.DockingAllowUnclassed = false;
 	if (!ImGui::DockBuilderGetNode(PanelDockId))
 	{
-		BuildDefaultPanelLayout(PanelDockId, ImGui::GetWindowSize(), TreePanelTitle.c_str(), ViewportPanelTitle.c_str(), TimelinePanelTitle.c_str());
+		BuildDefaultPanelLayout(PanelDockId, ImGui::GetWindowSize(), TreePanelTitle.c_str(), ViewportPanelTitle.c_str(), TimelinePanelTitle.c_str(), NotifyPanelTitle.c_str());
 	}
 	// 탭이 가려져 Begin이 false여도 호출해야 패널의 도킹이 풀리지 않는다
 	ImGui::DockSpace(PanelDockId, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_None, &PanelClass);
@@ -194,6 +247,12 @@ void FAnimationEditor::OnRender()
 	if (BeginPanel(TimelinePanelTitle, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
 	{
 		DrawTimeline();
+	}
+	ImGui::End();
+
+	if (BeginPanel(NotifyPanelTitle, ImGuiWindowFlags_None))
+	{
+		DrawNotifyEditor();
 	}
 	ImGui::End();
 
@@ -258,14 +317,37 @@ void FAnimationEditor::DrawTimeline()
 	DrawTransportControls();
 }
 
-void FAnimationEditor::DrawNotifiesTrack(float FrameRate) const
+void FAnimationEditor::DrawNotifiesTrack(float FrameRate)
 {
 	if (!ImGui::BeginNeoTimelineEx("Notifies"))
 	{
 		return;
 	}
 
-	// 키 ID가 주소로 정해지므로 Notify마다 다른 칸을 쓴다. 복사본이라 끌어도 Notify는 바뀌지 않는다
+	const UEditorEngine* Editor = Cast<UEditorEngine>(GEngine);
+	const bool bCanEdit = !Editor || !Editor->IsPlaying();
+	if (!bCanEdit)
+	{
+		DraggedNotifyIndex = -1;
+	}
+	if (DraggedNotifyIndex >= 0 && ImGui::IsMouseDragging(ImGuiMouseButton_Left))
+	{
+		FAnimNotifyEvent& Event = Sequence->Notifies[DraggedNotifyIndex];
+		// 아이콘을 그릴 때와 같은 프레임 폭을 써서 패널 너비가 달라도 이동량이 일치한다.
+		const float FrameDelta = (ImGui::GetMousePos().x - NotifyDragStartX) / ImGui::NeoGetPixelsPerFrame();
+		const float NewTime = std::round(NotifyDragStartTime * FrameRate + FrameDelta) / FrameRate;
+		const float MaxTime = FMath::Max(0.0f, Sequence->GetPlayLength() - Event.GetDuration());
+		const float ClampedTime = FMath::Clamp(NewTime, 0.0f, MaxTime);
+		if (Event.GetTime() != ClampedTime)
+		{
+			PrepareNotifyEdit();
+			SelectedNotifyIndex = DraggedNotifyIndex;
+			Event.SetTime(ClampedTime);
+			RefreshNotifyOffsets();
+		}
+	}
+
+	// 표시용 프레임 배열. 드래그 상태는 배열 주소 대신 이벤트 index로 보관한다.
 	TArray<int32> NotifyFrames;
 	for (const FAnimNotifyEvent& Notify : Sequence->Notifies)
 	{
@@ -273,14 +355,277 @@ void FAnimationEditor::DrawNotifiesTrack(float FrameRate) const
 	}
 	for (int32 i = 0; i < NotifyFrames.Num(); ++i)
 	{
+		const FAnimNotifyEvent& Event = Sequence->Notifies[i];
+		if (Event.NotifyStateClass)
+		{
+			ImGui::NeoDrawTimelineRect(NotifyFrames[i], TimeToFrame(Event.GetTime() + Event.GetDuration(), FrameRate), ImVec4(0.3f, 0.7f, 0.9f, 0.3f));
+		}
 		ImGui::NeoKeyframe(&NotifyFrames[i]);
 		if (ImGui::IsNeoKeyframeHovered())
 		{
+			if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+			{
+				SelectedNotifyIndex = i;
+				if (bCanEdit)
+				{
+					DraggedNotifyIndex = i;
+					NotifyDragStartX = ImGui::GetMousePos().x;
+					NotifyDragStartTime = Event.GetTime();
+				}
+			}
 			const FAnimNotifyEvent& Notify = Sequence->Notifies[i];
 			ImGui::SetTooltip("%s (%.2f s)", Notify.NotifyName.ToString().c_str(), Notify.GetTime());
 		}
 	}
 	ImGui::EndNeoTimeLine();
+}
+
+// 배열 재배치 전에 프리뷰가 보관한 Event 참조와 활성 State를 정리한다.
+void FAnimationEditor::PrepareNotifyEdit()
+{
+	if (UAnimSingleNodeInstance* Instance = GetPreviewInstance())
+	{
+		Instance->SetPlaying(false);
+		Instance->EndNotifyStates();
+	}
+	bNotifyDirty = true;
+	SaveMessage.clear();
+}
+
+bool FAnimationEditor::SaveNotifies()
+{
+	FString Error;
+	if (!FFbxAssetLoader::SaveAnimationAsset(Sequence, Error))
+	{
+		SaveMessage = "Save failed: " + Error;
+		return false;
+	}
+	bNotifyDirty = false;
+	SaveMessage = "Saved";
+	return true;
+}
+
+bool FAnimationEditor::DiscardNotifyChanges()
+{
+	// AssetManager가 같은 Sequence를 보관하므로 창만 닫지 않고 디스크의 Notify를 복원한다.
+	FString Path, Error;
+	FFbxAssetData Data;
+	if (!FbxPath::ResolveKey(Sequence->GetPath(), Path, Error) || !FFbxAssetBake::ReadBaked(Path, Data, Error))
+	{
+		SaveMessage = "Discard failed: " + Error;
+		return false;
+	}
+	if (Data.Type != EFbxAssetType::AnimSequence)
+	{
+		SaveMessage = "Discard failed: Asset is not an Animation Sequence";
+		return false;
+	}
+	try
+	{
+		json NotifyData = json::parse(Data.Animation.NotifyData);
+		PrepareNotifyEdit();
+		Sequence->Serialize(NotifyData, true);
+	}
+	catch (const std::exception& Exception)
+	{
+		SaveMessage = "Discard failed: " + FString(Exception.what());
+		return false;
+	}
+	SelectedNotifyIndex = -1;
+	DraggedNotifyIndex = -1;
+	bNotifyDirty = false;
+	SaveMessage.clear();
+	return true;
+}
+
+void FAnimationEditor::RefreshNotifyOffsets()
+{
+	FAnimNotifyEvent& Event = Sequence->Notifies[SelectedNotifyIndex];
+	Event.TriggerTimeOffset = GetTriggerTimeOffsetForType(Sequence->CalculateOffsetForNotify(Event.GetTime()));
+	Event.EndTriggerTimeOffset = GetTriggerTimeOffsetForType(Sequence->CalculateOffsetForNotify(Event.GetTime() + Event.GetDuration()));
+}
+
+void FAnimationEditor::CreateNewNotify(UClass* NotifyClass)
+{
+	DraggedNotifyIndex = -1;
+	PrepareNotifyEdit();
+	FAnimNotifyEvent Event;
+	Event.NotifyName = FName(NotifyClass ? NotifyClass->Name : "NewNotify");
+	if (NotifyClass)
+	{
+		UObject* Object = Sequence->CreateNotifyObject(NotifyClass);
+		Event.Notify = Cast<UAnimNotify>(Object);
+		Event.NotifyStateClass = Cast<UAnimNotifyState>(Object);
+	}
+	const float FrameRate = Sequence->DataModel ? Sequence->DataModel->FrameRate : 30.0f;
+	const float FrameDuration = FrameRate > 0.0f ? 1.0f / FrameRate : 1.0f / 30.0f;
+	const float Duration = Event.NotifyStateClass ? FMath::Min(FrameDuration, Sequence->GetPlayLength()) : 0.0f;
+	Event.SetDuration(Duration);
+	const UAnimSingleNodeInstance* Instance = GetPreviewInstance();
+	Event.SetTime(FMath::Clamp(Instance ? Instance->GetCurrentTime() : 0.0f, 0.0f, Sequence->GetPlayLength() - Duration));
+	Sequence->Notifies.Add(Event);
+	SelectedNotifyIndex = Sequence->Notifies.Num() - 1;
+	RefreshNotifyOffsets();
+}
+
+void FAnimationEditor::SetNotifyDemoEnabled(bool bEnabled)
+{
+	UAnimSingleNodeInstance* Instance = GetPreviewInstance();
+	const float Time = Instance->GetCurrentTime();
+	const float Rate = Instance->GetPlayRate();
+	const bool bPlaying = Instance->IsPlaying();
+	const bool bLooping = Instance->IsLooping();
+	const bool bReverse = Instance->IsReverse();
+	USkeletalMeshComponent* Component = PreviewScene->GetPreviewComponent();
+	if (bEnabled)
+	{
+		Component->SetAnimInstanceClass(UAnimNotifyDemoInstance::StaticClass());
+	}
+	else
+	{
+		Component->SetAnimationMode(EAnimationMode::AnimationSingleNode);
+	}
+	Instance = Component->GetSingleNodeInstance();
+	Instance->SetAnimationAsset(Sequence, bLooping, Rate);
+	Instance->SetPosition(Time, false);
+	Instance->SetReverse(bReverse);
+	Instance->SetPlaying(bPlaying);
+}
+
+void FAnimationEditor::DrawNotifyEditor()
+{
+	const UEditorEngine* Editor = Cast<UEditorEngine>(GEngine);
+	const bool bPlayingPIE = Editor && Editor->IsPlaying();
+	// PIE는 같은 Sequence의 Event 주소를 참조한다. 실행 중에는 배치를 수정하지 않는다.
+	if (bPlayingPIE)
+	{
+		ImGui::TextWrapped("Stop PIE to edit notifies.");
+	}
+	ImGui::BeginDisabled(bPlayingPIE);
+	UAnimSingleNodeInstance* PreviewInstance = GetPreviewInstance();
+	bool bNotifyDemo = Cast<UAnimNotifyDemoInstance>(PreviewInstance) != nullptr;
+	ImGui::BeginDisabled(PreviewInstance == nullptr);
+	if (ImGui::Checkbox("Named Notify Demo", &bNotifyDemo))
+	{
+		SetNotifyDemoEnabled(bNotifyDemo);
+	}
+	ImGui::EndDisabled();
+	if (ImGui::Button("Add Notify"))
+	{
+		ImGui::OpenPopup("AddNotify");
+	}
+	if (ImGui::BeginPopup("AddNotify"))
+	{
+		if (ImGui::MenuItem("Named Notify"))
+		{
+			CreateNewNotify(nullptr);
+		}
+		const auto DrawClasses = [&](const char* Label, UClass* BaseClass)
+		{
+			if (ImGui::BeginMenu(Label))
+			{
+				TArray<UClass*> Classes;
+				GetDerivedClasses(BaseClass, Classes);
+				for (UClass* Class : Classes)
+				{
+					if (Class->Constructor && ImGui::MenuItem(Class->Name.c_str()))
+					{
+						CreateNewNotify(Class);
+					}
+				}
+				if (Classes.IsEmpty())
+				{
+					ImGui::TextDisabled("No registered classes");
+				}
+				ImGui::EndMenu();
+			}
+		};
+		DrawClasses("Notify", UAnimNotify::StaticClass());
+		DrawClasses("Notify State", UAnimNotifyState::StaticClass());
+		ImGui::EndPopup();
+	}
+	ImGui::SameLine();
+	if (ImGui::Button("Save"))
+	{
+		SaveNotifies();
+	}
+	ImGui::SameLine();
+	ImGui::TextUnformatted(bNotifyDirty ? "Unsaved changes" : "");
+	if (!SaveMessage.empty())
+	{
+		ImGui::TextWrapped("%s", SaveMessage.c_str());
+	}
+
+	ImGui::Separator();
+	if (ImGui::BeginChild("NotifyList", ImVec2(0.0f, EditorUIScale::Px(140.0f)), ImGuiChildFlags_Borders))
+	{
+		for (int32 Index = 0; Index < Sequence->Notifies.Num(); ++Index)
+		{
+			const FAnimNotifyEvent& Event = Sequence->Notifies[Index];
+			ImGui::PushID(Index);
+			const FString Label = std::format("{}  {:.3f}s{}", Event.NotifyName.ToString(), Event.GetTime(), Event.NotifyStateClass ? " [State]" : "");
+			if (ImGui::Selectable(Label.c_str(), SelectedNotifyIndex == Index))
+			{
+				SelectedNotifyIndex = Index;
+			}
+			ImGui::PopID();
+		}
+	}
+	ImGui::EndChild();
+
+	if (Sequence->Notifies.IsValidIndex(SelectedNotifyIndex))
+	{
+		FAnimNotifyEvent& Event = Sequence->Notifies[SelectedNotifyIndex];
+		char Name[256];
+		strncpy_s(Name, Event.NotifyName.ToString().c_str(), _TRUNCATE);
+		if (ImGui::InputText("Name", Name, sizeof(Name)))
+		{
+			PrepareNotifyEdit();
+			Event.NotifyName = FName(Name);
+		}
+		float Time = Event.GetTime();
+		float Duration = Event.GetDuration();
+		bool bTimingChanged = ImGui::DragFloat("Time (s)", &Time, 0.01f, 0.0f, Sequence->GetPlayLength(), "%.3f", ImGuiSliderFlags_AlwaysClamp);
+		if (Event.NotifyStateClass)
+		{
+			bTimingChanged |= ImGui::DragFloat("Duration (s)", &Duration, 0.01f, 0.0f, Sequence->GetPlayLength(), "%.3f", ImGuiSliderFlags_AlwaysClamp);
+		}
+		if (bTimingChanged)
+		{
+			PrepareNotifyEdit();
+			Time = FMath::Clamp(Time, 0.0f, Sequence->GetPlayLength());
+			Event.SetTime(Time);
+			Event.SetDuration(FMath::Clamp(Duration, 0.0f, Sequence->GetPlayLength() - Time));
+			RefreshNotifyOffsets();
+		}
+		if (Event.GetTime() + Event.GetDuration() > Sequence->GetPlayLength())
+		{
+			ImGui::TextWrapped("Outside clip length. Adjust Time / Duration to move inside.");
+		}
+		float Weight = Event.TriggerWeightThreshold;
+		if (ImGui::DragFloat("Trigger Weight", &Weight, 0.01f, 0.0f, 1.0f, "%.5f", ImGuiSliderFlags_AlwaysClamp))
+		{
+			PrepareNotifyEdit();
+			Event.TriggerWeightThreshold = Weight;
+		}
+		UObject* NotifyObject = Event.Notify ? static_cast<UObject*>(Event.Notify) : Event.NotifyStateClass;
+		if (NotifyObject)
+		{
+			ImGui::Text("Class: %s", NotifyObject->GetClass()->Name.c_str());
+			if (DrawObjectProperties(NotifyObject, nullptr))
+			{
+				PrepareNotifyEdit();
+			}
+		}
+		if (ImGui::Button("Delete Notify"))
+		{
+			PrepareNotifyEdit();
+			DraggedNotifyIndex = -1;
+			Sequence->Notifies.RemoveAt(SelectedNotifyIndex);
+			SelectedNotifyIndex = -1;
+		}
+	}
+	ImGui::EndDisabled();
 }
 
 void FAnimationEditor::DrawTransportControls()
