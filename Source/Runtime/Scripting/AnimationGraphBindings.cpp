@@ -51,6 +51,39 @@ struct FLuaAnimationGraphBindings
 
 namespace
 {
+// 기존 UAnimInstance의 확장 지점으로 Lua 그래프를 공급한다.
+// 노드 소유권은 Lua 바인딩에 있으며 이 어댑터는 Root의 raw pointer만 보관한다.
+class ULuaAnimInstance final : public UAnimInstance
+{
+	DECLARE_CLASS(ULuaAnimInstance, UAnimInstance)
+public:
+	void SetGraphRoot(FAnimNode_Base* InRoot)
+	{
+		GraphRoot = InRoot;
+		if (IsInitialized())
+		{
+			InitializeAnimation();
+		}
+	}
+	FAnimNode_Base* GetGraphRoot() const { return GraphRoot; }
+
+protected:
+	FAnimNode_Base* GetCustomRootNode() override { return GraphRoot; }
+
+private:
+	FAnimNode_Base* GraphRoot = nullptr;
+};
+
+ULuaAnimInstance* RequireLuaAnimInstance(UAnimInstance* Instance)
+{
+	ULuaAnimInstance* LuaInstance = Cast<ULuaAnimInstance>(Instance);
+	if (!LuaInstance)
+	{
+		throw std::runtime_error("Lua root access requires an instance prepared by mesh:CreateAnimInstance()");
+	}
+	return LuaInstance;
+}
+
 // AnimInstance는 Component 소유다. UObject 주소 재사용은 UUID로 구분한다.
 struct FLuaAnimInstance
 {
@@ -471,15 +504,16 @@ std::shared_ptr<FLuaAnimationGraphBindings> BindAnimationGraphAPI(sol::state& Lu
 	});
 	Instance.set_function("SetRootNode", [Bindings](const FLuaAnimInstance& Owner, const FLuaAnimNode* Node)
 	{
+		ULuaAnimInstance* LuaInstance = RequireLuaAnimInstance(Owner.Get());
 		FAnimNode_Base* Native = ResolveInput(Owner, Node);
 		// 기존 Root를 초기화하는 동안에도 수명이 유지되어야 한다.
 		auto Previous = Bindings->Roots.extract(Owner.UUID);
 		if (Node) { Bindings->Roots.emplace(Owner.UUID, FLuaAnimationRoot{ Owner.Get(), Owner.UUID, Native, Node->Lifetime }); }
-		Owner.Get()->SetRootNode(Native);
+		LuaInstance->SetGraphRoot(Native);
 	});
 	Instance.set_function("GetRootNode", [](const FLuaAnimInstance& Owner, sol::this_state State)
 	{
-		return NodeReference(State, Owner, Owner.Get()->GetRootNode());
+		return NodeReference(State, Owner, RequireLuaAnimInstance(Owner.Get())->GetGraphRoot());
 	});
 	Instance.set_function("InitializeAnimation", [](const FLuaAnimInstance& Owner) { Owner.Get()->InitializeAnimation(); });
 	Instance.set_function("UninitializeAnimation", [](const FLuaAnimInstance& Owner) { Owner.Get()->UninitializeAnimation(); });
@@ -493,8 +527,8 @@ std::shared_ptr<FLuaAnimationGraphBindings> BindAnimationGraphAPI(sol::state& Lu
 		{
 			throw std::runtime_error("CreateAnimInstance requires a registered SkeletalMeshComponent with a mesh");
 		}
-		// Component가 실제 Instance를 생성·소유한다. 이미 기본 Instance면 기존 그래프를 유지한다.
-		Component.SetAnimInstanceClass(UAnimInstance::StaticClass());
+		// Component가 실제 Instance를 소유한다. 이미 Lua 어댑터면 기존 그래프를 유지한다.
+		Component.SetAnimInstanceClass(ULuaAnimInstance::StaticClass());
 		Component.InitAnim(false);
 		return FLuaAnimInstance(Component.GetAnimInstance(), Bindings);
 	});
@@ -514,7 +548,8 @@ void CollectAnimationGraphReferences(const std::shared_ptr<FLuaAnimationGraphBin
 	{
 		const FLuaAnimationRoot& Root = Entry.second;
 		UObject* Live = FindLiveObjectByAddress(Root.Instance);
-		return !Live || Live->GetUUID() != Root.UUID || Root.Instance->GetRootNode() != Root.Node;
+		ULuaAnimInstance* LuaInstance = Live && Live->GetUUID() == Root.UUID ? Cast<ULuaAnimInstance>(Live) : nullptr;
+		return !LuaInstance || LuaInstance->GetGraphRoot() != Root.Node;
 	});
 	std::erase_if(Bindings->Conditions, [](const auto& Entry)
 	{
@@ -538,9 +573,10 @@ void ReleaseAnimationGraphCallbacks(const std::shared_ptr<FLuaAnimationGraphBind
 	for (const auto& [UUID, Root] : Bindings->Roots)
 	{
 		UObject* Live = FindLiveObjectByAddress(Root.Instance);
-		if (Live && Live->GetUUID() == UUID && Root.Instance->GetRootNode() == Root.Node)
+		ULuaAnimInstance* LuaInstance = Live && Live->GetUUID() == UUID ? Cast<ULuaAnimInstance>(Live) : nullptr;
+		if (LuaInstance && LuaInstance->GetGraphRoot() == Root.Node)
 		{
-			Root.Instance->SetRootNode(nullptr);
+			LuaInstance->SetGraphRoot(nullptr);
 		}
 	}
 	for (const auto& Entry : Bindings->Conditions)
