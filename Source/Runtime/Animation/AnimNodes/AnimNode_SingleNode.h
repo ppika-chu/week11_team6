@@ -11,7 +11,7 @@ struct FAnimNode_SingleNode : public FAnimNode_Base
 
 	// 재생 상태 초기화는 UAnimSingleNodeInstance::NativeInitializeAnimation에서 수행한다.
 	void Initialize() override {}
-	void Update(float DeltaTime) override;
+	void Update(const FAnimationUpdateContext& Context) override;
 	void Evaluate(FAnimPose& OutPose) override;
 
 private:

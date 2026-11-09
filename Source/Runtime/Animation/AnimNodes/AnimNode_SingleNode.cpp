@@ -3,7 +3,7 @@
 #include "Animation/AnimSingleNodeInstance.h"
 #include "Animation/AnimSequenceBase.h"
 
-void FAnimNode_SingleNode::Update(float DeltaTime)
+void FAnimNode_SingleNode::Update(const FAnimationUpdateContext& Context)
 {
 	auto* Sequence = Cast<UAnimSequenceBase>(Instance->CurrentAsset);
 	if (!Sequence)
@@ -17,7 +17,7 @@ void FAnimNode_SingleNode::Update(float DeltaTime)
 	{
 		Instance->SetPlaying(false);
 	}
-	Instance->SequenceAdvanceImmediate(Sequence, Instance->bLooping, NewPlayRate, DeltaTime, Instance->CurrentTime);
+	Instance->SequenceAdvanceImmediate(Sequence, Instance->bLooping, NewPlayRate, Context.GetDeltaTime(), Instance->CurrentTime, Context.GetFinalBlendWeight());
 }
 
 void FAnimNode_SingleNode::Evaluate(FAnimPose& OutPose)

@@ -18,11 +18,11 @@ public:
 		}
 		CachedPose.LocalTransforms.Reset();
 	}
-	void Update(float DeltaTime)
+	void Update(const FAnimationUpdateContext& Context)
 	{
 		if (InputNode)
 		{
-			InputNode->Update(DeltaTime);
+			InputNode->Update(Context);
 		}
 	}
 	void Evaluate(FAnimPose& OutPose)

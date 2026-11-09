@@ -24,16 +24,20 @@ public:
 			InputNodeB->Initialize();
 		}
 	}
-	void Update(float DeltaTime)
+	void Update(const FAnimationUpdateContext& Context)
 	{
-		if (InputNodeA)
+		if (InputNodeA && InputNodeA == InputNodeB)
 		{
-			InputNodeA->Update(DeltaTime);
+			InputNodeA->Update(Context);
+			return;
 		}
-
-		if (InputNodeB && InputNodeB != InputNodeA)
+		if (InputNodeA && (!InputNodeB || Alpha < 1.0f))
 		{
-			InputNodeB->Update(DeltaTime);
+			InputNodeA->Update(Context.FractionalWeight(InputNodeB ? 1.0f - Alpha : 1.0f));
+		}
+		if (InputNodeB && (!InputNodeA || Alpha > 0.0f))
+		{
+			InputNodeB->Update(Context.FractionalWeight(InputNodeA ? Alpha : 1.0f));
 		}
 	}
 	void Evaluate(FAnimPose& OutPose)

@@ -2,7 +2,7 @@
 
 #include "Animation/AnimPose.h"
 #include "Animation/AnimSequence.h"
-#include "Animation/AnimationRuntime.h"
+#include "Animation/AnimInstance.h"
 #include "AnimNode_Base.h"
 #include "Math/EngineMath.h"
 
@@ -25,11 +25,11 @@ public:
 		PreviousTime = CurrentTime;
 		bPlaying = SequencePlayer != nullptr;
 	}
-	void Update(float DeltaTime)
+	void Update(const FAnimationUpdateContext& Context)
 	{
 		PreviousTime = CurrentTime;
 
-		if (!SequencePlayer || !bPlaying)
+		if (!SequencePlayer)
 		{
 			return;
 		}
@@ -43,10 +43,10 @@ public:
 			return;
 		}
 
-		const float CombinedPlayRate = PlayRate * SequencePlayer->RateScale;
-		const float MoveDelta = FMath::Max(DeltaTime, 0.0f) * CombinedPlayRate;
-
-		FAnimationRuntime::AdvanceTime(bLooping, MoveDelta, CurrentTime, Length);
+		const float EffectivePlayRate = bPlaying ? PlayRate : 0.0f;
+		const float MoveDelta = Context.GetDeltaTime() * EffectivePlayRate * SequencePlayer->RateScale;
+		// 정지 중에도 이동량 0으로 NotifyState 구간을 수집한다.
+		Context.AnimInstance->SequenceAdvanceImmediate(SequencePlayer, bLooping, EffectivePlayRate, Context.GetDeltaTime(), CurrentTime, Context.GetFinalBlendWeight());
 
 		if (!bLooping &&
 			((MoveDelta > 0.0f && CurrentTime >= Length) ||

@@ -17,11 +17,11 @@ public:
 			CachedPoseNode->Initialize();
 		}
 	}
-	void Update(float DeltaTime)
+	void Update(const FAnimationUpdateContext& Context)
 	{
 		if (CachedPoseNode)
 		{
-			CachedPoseNode->Update(DeltaTime);
+			CachedPoseNode->Update(Context);
 		}
 	}
 	void Evaluate(FAnimPose& OutPose)

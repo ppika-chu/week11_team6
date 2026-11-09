@@ -1,6 +1,6 @@
 #pragma once
 #include "AnimNodes/AnimNode_TransitionResult.h"
-#include "AnimUpdateContext.h"
+#include "AnimationUpdateContext.h"
 
 #include <functional>
 #include <utility>
@@ -11,7 +11,7 @@
 struct FAnimTransition
 {
 public:
-	using FConditionFunction = std::function<bool(const FAnimUpdateContext&)>;
+	using FConditionFunction = std::function<bool(const FAnimationUpdateContext&)>;
 
 	void Initialize()
 	{
@@ -21,7 +21,7 @@ public:
 		}
 	}
 
-	bool EvaluateCondition(const FAnimUpdateContext& Context)
+	bool EvaluateCondition(const FAnimationUpdateContext& Context)
 	{
 		const bool bCanTransition = ConditionFunction && ConditionFunction(Context);
 

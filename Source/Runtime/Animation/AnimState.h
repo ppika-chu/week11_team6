@@ -18,11 +18,11 @@ public:
 			StateResult->Initialize();
 		}
 	}
-	void Update(float DeltaTime)
+	void Update(const FAnimationUpdateContext& Context)
 	{
 		if (StateResult)
 		{
-			StateResult->Update(DeltaTime);
+			StateResult->Update(Context);
 		}
 	}
 	void Evaluate(FAnimPose& OutPose)
