@@ -2,6 +2,7 @@
 
 #include "AnimNode_Base.h"
 #include "Animation/AnimPose.h"
+#include "Animation/AnimationRuntime.h"
 #include "Math/EngineMath.h"
 
 // 두 입력 노드 A와 B의 로컬 포즈를 Alpha에 따라 혼합하는 노드.
@@ -39,12 +40,18 @@ public:
 	{
 		if (InputNodeA && InputNodeB)
 		{
-			FAnimPose PoseA;
-			InputNodeA->Evaluate(PoseA);
+			InputNodeA->Evaluate(OutPose);
 			FAnimPose PoseB;
 			InputNodeB->Evaluate(PoseB);
-			// TODO(BlendAPI): 공용 정적 포즈 Blend API로 PoseA와 PoseB를 Alpha(B의 가중치)에 따라 혼합한다.
-			// API의 반환 방식에 맞춰 혼합 결과를 OutPose에 기록한다.
+
+			// 혼합할 수 없으면 A의 포즈를 유지한다.
+			if (OutPose.LocalTransforms.Num() != PoseB.LocalTransforms.Num())
+			{
+				return;
+			}
+
+			// API는 A의 가중치를 받으므로 B의 Alpha를 반전한다.
+			FAnimationRuntime::BlendTwoPosesTogetherInPlace(OutPose, PoseB, 1.0f - Alpha);
 		}
 		else if (InputNodeA)
 		{
