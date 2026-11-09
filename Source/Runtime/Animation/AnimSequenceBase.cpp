@@ -2,6 +2,10 @@
 #include "AnimSequenceBase.h"
 #include "AnimNotifyQueue.h"
 #include <cmath>
+#include <stdexcept>
+#include "AnimNotifies/AnimNotify.h"
+#include "AnimNotifies/AnimNotifyState.h"
+#include "UObject/UObjectHash.h"
 
 void UAnimSequenceBase::GetAnimNotifies(float StartTime, float DeltaTime, FAnimNotifyContext& NotifyContext) const
 {
@@ -69,4 +73,98 @@ EAnimEventTriggerOffsets::Type UAnimSequenceBase::CalculateOffsetForNotify(float
 		return EAnimEventTriggerOffsets::OffsetBefore;
 	}
 	return EAnimEventTriggerOffsets::NoOffset;
+}
+
+
+UAnimSequenceBase::~UAnimSequenceBase()
+{
+	// 엔진 전역 종료에서 자식 UObject가 먼저 해제된 경우를 처리한다(DataModel과 같은 경계).
+	for (UObject* Object : OwnedNotifyObjects)
+	{
+		if (FindLiveObjectByAddress(Object)) delete Object;
+	}
+	if (DataModel && FindLiveObjectByAddress(DataModel)) delete DataModel;
+}
+
+UObject* UAnimSequenceBase::CreateNotifyObject(UClass* NotifyClass)
+{
+	if (!NotifyClass || !NotifyClass->Constructor || (!NotifyClass->IsChildOf(UAnimNotify::StaticClass()) && !NotifyClass->IsChildOf(UAnimNotifyState::StaticClass()))) return nullptr;
+	UObject* Object = NewObject<UObject>(this, NotifyClass);
+	OwnedNotifyObjects.Add(Object);
+	return Object;
+}
+
+void UAnimSequenceBase::Serialize(json& Handle, bool bIsLoading)
+{
+	Super::Serialize(Handle, bIsLoading);
+	const auto ValidateEvent = [](const FAnimNotifyEvent& Event)
+	{
+		if (!std::isfinite(Event.GetTime()) || Event.GetTime() < 0 || !std::isfinite(Event.Duration) || Event.Duration < 0 ||
+			!std::isfinite(Event.TriggerTimeOffset) || !std::isfinite(Event.EndTriggerTimeOffset) || !std::isfinite(Event.TriggerWeightThreshold) || Event.TriggerWeightThreshold < 0 || Event.TriggerWeightThreshold > 1 || (Event.Notify && Event.NotifyStateClass))
+		{
+			throw std::runtime_error("Invalid animation Notify data");
+		}
+	};
+	if (!bIsLoading)
+	{
+		Handle["Notifies"] = json::array();
+		for (const FAnimNotifyEvent& Event : Notifies)
+		{
+			ValidateEvent(Event);
+			json Item = { {"Time", Event.GetTime()}, {"Duration", Event.Duration}, {"Name", Event.NotifyName.ToString()},
+				{"TriggerTimeOffset", Event.TriggerTimeOffset}, {"EndTriggerTimeOffset", Event.EndTriggerTimeOffset}, {"TriggerWeightThreshold", Event.TriggerWeightThreshold} };
+			UObject* Object = Event.NotifyStateClass ? static_cast<UObject*>(Event.NotifyStateClass) : static_cast<UObject*>(Event.Notify);
+			Item["Kind"] = Event.NotifyStateClass ? "State" : Event.Notify ? "Notify" : "Name";
+			if (Object)
+			{
+				Item["Class"] = Object->GetClass()->Name;
+				json Properties = json::object(); Object->Serialize(Properties, false); Item["Properties"] = std::move(Properties);
+			}
+			Handle["Notifies"].push_back(std::move(Item));
+		}
+		return;
+	}
+
+	// 파일 오류로 기존 편집 배열을 절반만 바꾸지 않도록 새 목록을 완성한 뒤 교체한다.
+	TArray<FAnimNotifyEvent> NewNotifies;
+	TArray<UObject*> NewObjects;
+	try
+	{
+		const json& Items = Handle.at("Notifies");
+		if (!Items.is_array()) throw std::runtime_error("Notifies must be an array");
+		for (const json& Item : Items)
+		{
+			FAnimNotifyEvent Event;
+			Event.SetTime(Item.at("Time").get<float>()); Event.SetDuration(Item.at("Duration").get<float>());
+			Event.NotifyName = FName(Item.at("Name").get<FString>());
+			Event.TriggerTimeOffset = Item.at("TriggerTimeOffset").get<float>(); Event.EndTriggerTimeOffset = Item.at("EndTriggerTimeOffset").get<float>();
+			Event.TriggerWeightThreshold = Item.at("TriggerWeightThreshold").get<float>();
+			ValidateEvent(Event);
+			const FString Kind = Item.at("Kind").get<FString>();
+			if (Kind != "Name")
+			{
+				UClass* Base = Kind == "Notify" ? UAnimNotify::StaticClass() : Kind == "State" ? UAnimNotifyState::StaticClass() : nullptr;
+				UClass* Class = FindClass(Item.at("Class").get<FString>());
+				if (!Base || !Class || !Class->Constructor || !Class->IsChildOf(Base)) throw std::runtime_error("Unknown or invalid Notify class");
+				UObject* Object = NewObject<UObject>(this, Class); NewObjects.Add(Object);
+				json Properties = Item.at("Properties");
+				if (!Properties.is_object()) throw std::runtime_error("Notify properties must be an object");
+				Object->Serialize(Properties, true);
+				if (Kind == "State") Event.NotifyStateClass = Cast<UAnimNotifyState>(Object);
+				else Event.Notify = Cast<UAnimNotify>(Object);
+			}
+			// 시각·Duration은 보존하고 새 클립 길이에 맞춰 경계 보정만 갱신한다.
+			Event.RefreshTriggerOffset(CalculateOffsetForNotify(Event.GetTime()));
+			Event.RefreshEndTriggerOffset(CalculateOffsetForNotify(Event.GetTime() + Event.GetDuration()));
+			NewNotifies.Add(Event);
+		}
+	}
+	catch (...)
+	{
+		for (UObject* Object : NewObjects) delete Object;
+		throw;
+	}
+	for (UObject* Object : OwnedNotifyObjects) delete Object;
+	OwnedNotifyObjects = std::move(NewObjects);
+	Notifies = std::move(NewNotifies);
 }
