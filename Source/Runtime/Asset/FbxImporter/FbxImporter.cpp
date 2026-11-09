@@ -393,6 +393,8 @@ public:
 		: Scene(S), Options(O), SourceKey(K), Source(P), Destination(D), Output(Out), Warnings(W), Error(E) {}
 
 	void Warn(const FString& Message) { if (Warned.insert(Message).second) Warnings.Add(Message); }
+	void ManageNamespace(FString& ObjectName) const;
+	FString GetFbxObjectName(const FbxObject* Object) const;
 	FString MakeKey(const char* Prefix, const FString& Label, const FString& Identity);
 	FFbxAssetData Data(EFbxAssetType Type, const FString& Key, const FString& Identity)
 	{
@@ -418,6 +420,27 @@ public:
 	void CookAnimations(const FRig& Rig);
 	bool Run();
 };
+
+// 에셋, 본, 슬롯처럼 사람이 보는 이름에만 쓴다. NodePath 같은 구분용 ID는 원래 이름을 유지한다. (UE FFbxHelper::ManageNamespace)
+void FImport::ManageNamespace(FString& ObjectName) const
+{
+	if (Options.bKeepFbxNamespace)
+	{
+		std::replace(ObjectName.begin(), ObjectName.end(), ':', '_');
+		return;
+	}
+	const size_t LastNamespaceTokenIndex = ObjectName.rfind(':');
+	if (LastNamespaceTokenIndex != FString::npos) ObjectName.erase(0, LastNamespaceTokenIndex + 1);
+}
+
+// UE FFbxHelper::GetFbxObjectName
+FString FImport::GetFbxObjectName(const FbxObject* Object) const
+{
+	if (!Object) return {};
+	FString ObjectName = Object->GetName();
+	ManageNamespace(ObjectName);
+	return ObjectName;
+}
 
 FString FImport::MakeKey(const char* Prefix, const FString& Label, const FString& Identity)
 {
@@ -459,7 +482,7 @@ void FImport::Gather(FbxNode* Node, bool ParentVisible, FbxNode* Group, int LOD)
 		if (Attribute->GetAttributeType() != FbxNodeAttribute::eMesh || !Visible || CollisionName(Node->GetName())) continue;
 		auto* Mesh = static_cast<FbxMesh*>(Attribute);
 		FMeshItem Item; Item.Node = Node; Item.Mesh = Mesh; Item.LODGroupNode = Group; Item.LOD = LOD;
-		Item.Label = Group ? Group->GetName() : Node->GetName();
+		Item.Label = GetFbxObjectName(Group ? Group : Node);
 		Item.UnitKey = Group ? NodePath(Group) : NodePath(Node) + "Mesh[" + std::to_string(A) + "]";
 		if (!Group)
 		{
@@ -467,8 +490,10 @@ void FImport::Gather(FbxNode* Node, bool ParentVisible, FbxNode* Group, int LOD)
 			const FString Name = Node->GetName();
 			if (std::regex_match(Name, Match, std::regex("(.+)_LOD([0-9]+)", std::regex::icase)))
 			{
+				// 구분용 ID는 원래 이름, 표시 이름만 네임스페이스를 처리한다
+				Item.UnitKey = NodePath(Node->GetParent()) + "NamedLOD/" + Match[1].str();
 				Item.Label = Match[1].str();
-				Item.UnitKey = NodePath(Node->GetParent()) + "NamedLOD/" + Item.Label;
+				ManageNamespace(Item.Label);
 				try { Item.LOD = std::stoi(Match[2].str()); } catch (...) { Item.LOD = 4; }
 			}
 		}
@@ -679,7 +704,7 @@ bool FImport::BuildRig(FRig& Rig)
 		{
 			const FbxAMatrix BindGlobal = FrameInverse * Bind(Node);
 			const FbxAMatrix BindLocal = Parent < 0 ? BindGlobal : (FrameInverse * Bind(Rig.Bones[Parent])).Inverse() * BindGlobal;
-			BindReference.RefBoneInfo.Add({ Node->GetName(), Parent });
+			BindReference.RefBoneInfo.Add({ GetFbxObjectName(Node), Parent });
 			BindReference.RefBonePose.Add(EnginePose(BindLocal, UnitScale));
 		}
 		const FMatrix Converted = EngineMatrix(Local, UnitScale);
@@ -690,12 +715,18 @@ bool FImport::BuildRig(FRig& Rig)
 		for (int R = 0; R < 4; ++R) for (int C = 0; C < 4; ++C)
 			Difference |= std::abs(Rebuilt.M[R][C] - Converted.M[R][C]) > 1.e-3f * (1 + std::abs(Converted.M[R][C]));
 		if (Difference) Warn("Bone transform is approximated as TRS: " + NodePath(Node));
-		Rig.Reference.RefBoneInfo.Add({ Node->GetName(), Parent });
+		Rig.Reference.RefBoneInfo.Add({ GetFbxObjectName(Node), Parent });
 		Rig.Reference.RefBonePose.Add(Transform);
 		for (int C = 0; C < Node->GetChildCount(); ++C) if (!Visit(Node->GetChild(C), Index)) return false;
 		return true;
 	};
-	if (!Visit(Rig.Root, -1) || !Rig.Reference.Validate(Error)) return false;
+	if (!Visit(Rig.Root, -1)) return false;
+	if (!Rig.Reference.Validate(Error))
+	{
+		// 네임스페이스를 지워 본 이름이 겹친 경우 옵션을 켜면 임포트할 수 있다
+		if (!Options.bKeepFbxNamespace) Error += " (enable Keep FBX Namespace if bone names differ only by namespace)";
+		return false;
+	}
 	if (Rig.bUseTimeZeroAsBindPose)
 	{
 		TArray<FMatrix> BindModel, TimeZeroModel;
@@ -703,7 +734,7 @@ bool FImport::BuildRig(FRig& Rig)
 		Rig.TimeZeroRebindMatrices.SetNum(TimeZeroModel.Num());
 		for (int32 Bone = 0; Bone < TimeZeroModel.Num(); ++Bone) Rig.TimeZeroRebindMatrices[Bone] = BindModel[Bone].Inverse() * TimeZeroModel[Bone];
 	}
-	Rig.Key = MakeKey("SKEL", Rig.Root->GetName(), "Skeleton:" + NodePath(Rig.Root));
+	Rig.Key = MakeKey("SKEL", GetFbxObjectName(Rig.Root),"Skeleton:" + NodePath(Rig.Root));
 	if (Rig.Key.empty()) return false;
 	auto Asset = Data(EFbxAssetType::Skeleton, Rig.Key, "Skeleton:" + NodePath(Rig.Root));
 	Asset.RefSkeleton = Rig.Reference;
@@ -791,7 +822,7 @@ FString FImport::Texture(FbxProperty Property)
 	int TextureIndex = 0;
 	for (; TextureIndex < Scene->GetTextureCount() && Scene->GetTexture(TextureIndex) != T; ++TextureIndex) {}
 	FString Identity = "Texture:" + FString(T->GetName()) + "[" + std::to_string(TextureIndex) + "]/" + FbxPath::ToString(FbxPath::FromString(T->GetFileName()).filename());
-	const FString Key = MakeKey("T", T->GetName(), Identity);
+	const FString Key = MakeKey("T", GetFbxObjectName(T), Identity);
 	if (Key.empty()) return {};
 	auto Asset = Data(EFbxAssetType::Texture2D, Key, Identity); Asset.Texture = std::move(Image);
 	Output.Add(std::move(Asset)); Textures[Lower(TextureKey)] = Key;
@@ -872,7 +903,7 @@ FString FImport::OpacityTexture(FbxSurfaceMaterial* Material, const FString& Dif
 		P[3] = static_cast<uint8>(std::clamp(std::lround(Top * (1 - FY) + Bottom * FY), 0l, 255l));
 	}
 	const FString SourceObject = "OpacityTexture:" + Identity;
-	const FString Key = MakeKey("T", FString(Material->GetName()) + "_Opacity", SourceObject);
+	const FString Key = MakeKey("T", GetFbxObjectName(Material) + "_Opacity", SourceObject);
 	if (Key.empty()) return {};
 	auto Asset = Data(EFbxAssetType::Texture2D, Key, SourceObject); Asset.Texture = std::move(Image);
 	Output.Add(std::move(Asset));
@@ -886,7 +917,7 @@ FString FImport::Material(FbxSurfaceMaterial* M)
 	int SourceIndex = 0;
 	for (; SourceIndex < Scene->GetMaterialCount() && Scene->GetMaterial(SourceIndex) != M; ++SourceIndex) {}
 	const FString Identity = "Material:" + FString(M->GetName()) + "[" + std::to_string(SourceIndex) + "]";
-	const FString Key = MakeKey("M", M->GetName(), Identity);
+	const FString Key = MakeKey("M", GetFbxObjectName(M), Identity);
 	if (Key.empty()) return {};
 	auto Asset = Data(EFbxAssetType::Material, Key, Identity);
 	float DiffuseFactor = 1.f;
@@ -1005,7 +1036,7 @@ bool FImport::AppendMesh(const FMeshItem& Item, FFbxAssetData& Asset, int LODInd
 			// 모든 LOD는 애셋 단위 슬롯 인덱스를 사용한다.
 			for (auto& Existing : Asset.LODs)
 			{
-				FStaticMaterialSlot Slot; Slot.Name = SourceMaterial ? SourceMaterial->GetName() : "Default";
+				FStaticMaterialSlot Slot; Slot.Name = SourceMaterial ? GetFbxObjectName(SourceMaterial) : "Default";
 				Existing.MeshData.MaterialSlots.Add(std::move(Slot));
 			}
 		}
@@ -1354,7 +1385,7 @@ void FImport::CookAnimations(const FRig& Rig)
 
 		FFbxAssetData Asset = Data(EFbxAssetType::AnimSequence, {}, "Animation:" + NodePath(Rig.Root) + StackName);
 		Asset.SkeletonKey = Rig.Key;
-		Asset.Animation.Name = StackName;
+		Asset.Animation.Name = GetFbxObjectName(Stack);
 		Asset.Animation.FrameRate = static_cast<float>(SampleRate);
 		Asset.Animation.NumberOfFrames = NumFrame;
 		Asset.Animation.NumberOfKeys = BakeKeyCount;
@@ -1434,7 +1465,7 @@ bool FImport::Run()
 		const FString Identity = Item.Rig ? "Skeletal:" + NodePath(Item.Rig) + (Combine ? "Combined" : Item.UnitKey)
 			: "Static:" + (Combine ? FString("Combined") : Item.UnitKey);
 		auto& Group = Groups[Identity]; Group.Identity = Identity; Group.Root = Item.Rig;
-		Group.Label = Combine ? (Item.Rig ? FString(Item.Rig->GetName()) : FString("Combined")) : Item.Label;
+		Group.Label = Combine ? (Item.Rig ? GetFbxObjectName(Item.Rig) : FString("Combined")) : Item.Label;
 		Group.Items.push_back(&Item);
 	}
 	for (const auto& [Key, Group] : Groups) if (!CookMesh(Group)) return false;

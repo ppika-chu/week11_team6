@@ -3,91 +3,117 @@
 #include "Editor/Persona/PersonaAssetEditor.h"
 #include "Editor/EditorUI/EditorUIScale.h"
 
+#include "Asset/AssetManager.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Editor/HitoriEd/EditorResourcePaths.h"
+#include "DebugSkelMeshComponent.h"
 #include "Render/LineBatcher.h"
 #include "Render/Mesh.h"
 #include "Render/SkeletalMesh.h"
+#include "Render/Texture2D.h"
 
 #include <imgui.h>
 #include <cmath>
+#include <cstdint>
 #include <format>
 
 namespace
 {
-	// 언리얼 SkeletalDebugRendering과 같은 값
-	constexpr int32 NumSphereSides = 10;     // 구를 이루는 원 하나의 선분 수
-	constexpr int32 NumConeSides = 4;        // 사각뿔
+// 언리얼 SkeletalDebugRendering과 같은 값
+constexpr int32 NumSphereSides = 10; // 구를 이루는 원 하나의 선분 수
+constexpr int32 NumConeSides = 4;    // 사각뿔
 
 
-	// 언리얼 UPersonaOptions 기본 색은 Linear 값이다. 프리뷰 타깃은 톤 매핑 뒤 화면 값이라 감마를 씌워 같은 색으로 보이게 한다
-	FVector4 LinearToDisplay(float R, float G, float B)
+// 언리얼 UPersonaOptions 기본 색은 Linear 값이다. 프리뷰 타깃은 톤 매핑 뒤 화면 값이라 감마를 씌워 같은 색으로 보이게 한다
+FVector4 LinearToDisplay(float R, float G, float B)
+{
+	return FVector4(std::pow(R, 1.0f / 2.2f), std::pow(G, 1.0f / 2.2f), std::pow(B, 1.0f / 2.2f), 1.0f);
+}
+const FVector4 DefaultBoneColor = LinearToDisplay(0.0f, 0.0f, 0.025f);           // 남색 (기본)
+const FVector4 SelectedBoneColor = LinearToDisplay(0.2f, 1.0f, 0.2f);            // 초록 (선택)
+const FVector4 AffectedBoneColor = LinearToDisplay(1.0f, 1.0f, 1.0f);            // 흰색 (자손)
+const FVector4 ParentOfSelectedBoneColor = LinearToDisplay(0.85f, 0.45f, 0.12f); // 주황 (부모)
+const FVector4 RootConnectionColor = LinearToDisplay(1.0f, 0.0f, 0.0f);          // 빨강 (루트)
+
+// Center를 지나고 AxisA, AxisB가 만드는 평면 위의 원
+void AddWireCircle(FLineBatcher& LineBatcher, const FVector& Center, const FVector& AxisA, const FVector& AxisB, float Radius, const FVector4& Color)
+{
+	const float Step = 2.0f * 3.14159265f / static_cast<float>(NumSphereSides);
+	FVector Prev = Center + AxisA * Radius;
+	for (int32 i = 1; i <= NumSphereSides; ++i)
 	{
-		return FVector4(std::pow(R, 1.0f / 2.2f), std::pow(G, 1.0f / 2.2f), std::pow(B, 1.0f / 2.2f), 1.0f);
+		const float Angle = Step * static_cast<float>(i);
+		const FVector Next = Center + (AxisA * std::cos(Angle) + AxisB * std::sin(Angle)) * Radius;
+		LineBatcher.AddLine(Prev, Next, Color);
+		Prev = Next;
 	}
-	const FVector4 DefaultBoneColor = LinearToDisplay(0.0f, 0.0f, 0.025f);           // 남색 (기본)
-	const FVector4 SelectedBoneColor = LinearToDisplay(0.2f, 1.0f, 0.2f);            // 초록 (선택)
-	const FVector4 AffectedBoneColor = LinearToDisplay(1.0f, 1.0f, 1.0f);            // 흰색 (자손)
-	const FVector4 ParentOfSelectedBoneColor = LinearToDisplay(0.85f, 0.45f, 0.12f); // 주황 (부모)
-	const FVector4 RootConnectionColor = LinearToDisplay(1.0f, 0.0f, 0.0f);          // 빨강 (루트)
+}
 
-	// Center를 지나고 AxisA, AxisB가 만드는 평면 위의 원
-	void AddWireCircle(FLineBatcher& LineBatcher, const FVector& Center, const FVector& AxisA, const FVector& AxisB, float Radius, const FVector4& Color)
+// 본 축 기준 XY, XZ, YZ 원 3개
+void AddWireSphere(FLineBatcher& LineBatcher, const FVector& Center, const FVector& X, const FVector& Y, const FVector& Z, float Radius, const FVector4& Color)
+{
+	AddWireCircle(LineBatcher, Center, X, Y, Radius, Color);
+	AddWireCircle(LineBatcher, Center, X, Z, Radius, Color);
+	AddWireCircle(LineBatcher, Center, Y, Z, Radius, Color);
+}
+
+//  Base 쪽 사각형에서 Apex로 모이는 사각뿔
+void AddWireCone(FLineBatcher& LineBatcher, const FVector& Base, const FVector& Apex, float Radius, const FVector4& Color)
+{
+	const FVector ToApex = Apex - Base;
+	if (ToApex.Size() < 1.0e-4f)
 	{
-		const float Step = 2.0f * 3.14159265f / static_cast<float>(NumSphereSides);
-		FVector Prev = Center + AxisA * Radius;
-		for (int32 i = 1; i <= NumSphereSides; ++i)
-		{
-			const float Angle = Step * static_cast<float>(i);
-			const FVector Next = Center + (AxisA * std::cos(Angle) + AxisB * std::sin(Angle)) * Radius;
-			LineBatcher.AddLine(Prev, Next, Color);
-			Prev = Next;
-		}
+		return;
 	}
+	const FVector Dir = ToApex.Normalized();
+	const FVector Helper = std::abs(Dir.Z) < 0.99f ? FVector(0.0f, 0.0f, 1.0f) : FVector(1.0f, 0.0f, 0.0f);
+	const FVector U = FVector::Cross(Dir, Helper).Normalized();
+	const FVector V = FVector::Cross(Dir, U);
 
-	// 본 축 기준 XY, XZ, YZ 원 3개
-	void AddWireSphere(FLineBatcher& LineBatcher, const FVector& Center, const FVector& X, const FVector& Y, const FVector& Z, float Radius, const FVector4& Color)
+	FVector Corners[NumConeSides];
+	for (int32 i = 0; i < NumConeSides; ++i)
 	{
-		AddWireCircle(LineBatcher, Center, X, Y, Radius, Color);
-		AddWireCircle(LineBatcher, Center, X, Z, Radius, Color);
-		AddWireCircle(LineBatcher, Center, Y, Z, Radius, Color);
+		const float Angle = 2.0f * 3.14159265f * static_cast<float>(i) / static_cast<float>(NumConeSides);
+		Corners[i] = Base + (U * std::cos(Angle) + V * std::sin(Angle)) * Radius;
 	}
-
-	//  Base 쪽 사각형에서 Apex로 모이는 사각뿔
-	void AddWireCone(FLineBatcher& LineBatcher, const FVector& Base, const FVector& Apex, float Radius, const FVector4& Color)
+	for (int32 i = 0; i < NumConeSides; ++i)
 	{
-		const FVector ToApex = Apex - Base;
-		if (ToApex.Size() < 1.0e-4f)
-		{
-			return;
-		}
-		const FVector Dir = ToApex.Normalized();
-		const FVector Helper = std::abs(Dir.Z) < 0.99f ? FVector(0.0f, 0.0f, 1.0f) : FVector(1.0f, 0.0f, 0.0f);
-		const FVector U = FVector::Cross(Dir, Helper).Normalized();
-		const FVector V = FVector::Cross(Dir, U);
-
-		FVector Corners[NumConeSides];
-		for (int32 i = 0; i < NumConeSides; ++i)
-		{
-			const float Angle = 2.0f * 3.14159265f * static_cast<float>(i) / static_cast<float>(NumConeSides);
-			Corners[i] = Base + (U * std::cos(Angle) + V * std::sin(Angle)) * Radius;
-		}
-		for (int32 i = 0; i < NumConeSides; ++i)
-		{
-			LineBatcher.AddLine(Corners[i], Apex, Color);
-			LineBatcher.AddLine(Corners[i], Corners[(i + 1) % NumConeSides], Color);
-		}
+		LineBatcher.AddLine(Corners[i], Apex, Color);
+		LineBatcher.AddLine(Corners[i], Corners[(i + 1) % NumConeSides], Color);
 	}
+}
 
-	// Start를 구 반지름만큼 밀고, End(꼭짓점)까지 뿔
-	void AddConeConnection(FLineBatcher& LineBatcher, const FVector& Start, const FVector& End, float Radius, const FVector4& Color)
+// Start를 구 반지름만큼 밀고, End(꼭짓점)까지 뿔
+void AddConeConnection(FLineBatcher& LineBatcher, const FVector& Start, const FVector& End, float Radius, const FVector4& Color)
+{
+	const FVector Delta = End - Start;
+	if (Delta.Size() <= Radius)
 	{
-		const FVector Delta = End - Start;
-		if (Delta.Size() <= Radius)
-		{
-			return;
-		}
-		AddWireCone(LineBatcher, Start + Delta.Normalized() * Radius, End, Radius, Color);
+		return;
 	}
+	AddWireCone(LineBatcher, Start + Delta.Normalized() * Radius, End, Radius, Color);
+}
+
+FString GetSkinWeightViewModeLabel(ESkinWeightViewMode ViewMode)
+{
+	switch (ViewMode)
+	{
+	case ESkinWeightViewMode::Material:
+		return "Lit";
+	case ESkinWeightViewMode::Greyscale:
+		return "Greyscale";
+	case ESkinWeightViewMode::Turbo:
+		return "Turbo";
+	case ESkinWeightViewMode::Jet:
+		return "Jet";
+	case ESkinWeightViewMode::Viridis:
+		return "Viridis";
+	case ESkinWeightViewMode::Inferno:
+		return "Inferno";
+	default:
+		return "Unknown";
+	}
+}
 }
 
 FPersonaAssetEditor::FPersonaAssetEditor(USkeletalMesh* InMesh, int32 InEditorId)
@@ -111,6 +137,25 @@ FPersonaAssetEditor::FPersonaAssetEditor(USkeletalMesh* InMesh, int32 InEditorId
 			BoneChildren[Parent].Add(i);
 		}
 	}
+
+	// 가중치가 0보다 큰 정점이 하나라도 있으면 그 본은 메시를 움직인다
+	BoneHasWeights.Init(0, NumBones);
+	const FSkinWeightData& SkinWeights = Mesh->GetSkinWeights();
+	for (int32 VertexIndex = 0; VertexIndex < SkinWeights.InfluenceBones.Num(); ++VertexIndex)
+	{
+		for (int32 i = 0; i < 4; ++i)
+		{
+			const int32 BoneIndex = SkinWeights.InfluenceBones[VertexIndex][i];
+			if (SkinWeights.InfluenceWeights[VertexIndex][i] > 0.0f && BoneIndex < NumBones)
+			{
+				BoneHasWeights[BoneIndex] = 1;
+			}
+		}
+	}
+
+	// Resources는 스캔하지 않으므로 경로로 불러온다. AssetMap에 캐시된다
+	BoneIcon = UAssetManager::Get().LoadTexture(EditorResourcePaths::BoneIcon);
+	BoneNonWeightedIcon = UAssetManager::Get().LoadTexture(EditorResourcePaths::BoneNonWeightedIcon);
 }
 
 FPersonaAssetEditor::~FPersonaAssetEditor() = default;
@@ -123,6 +168,8 @@ void FPersonaAssetEditor::Tick(float DeltaTime)
 		return;
 	}
 
+	SyncPreviewSkinWeightView();
+
 	PreviewScene->Tick(DeltaTime);
 }
 
@@ -134,11 +181,109 @@ FString FPersonaAssetEditor::GetSelectedBoneName() const
 void FPersonaAssetEditor::SelectBoneByName(const FString& BoneName)
 {
 	SelectedBoneIndex = BoneName.empty() ? -1 : Mesh->RefSkeleton.FindBoneIndex(BoneName);
+	bRevealSelectedInTree = SelectedBoneIndex >= 0;
+}
+
+void FPersonaAssetEditor::DrawSkeletonTree()
+{
+	// 키보드 내비게이션을 끈다. 켜 두면 클릭한 노드가 포커스를 받아 Space가 노드 접기 / 펼치기로 먹힌다
+	ImGui::PushItemFlag(ImGuiItemFlags_NoNav, true);
+	for (const int32 RootIndex : RootBones)
+	{
+		DrawBoneTreeNode(RootIndex);
+	}
+	ImGui::PopItemFlag();
+
+	// 펼치기 / 스크롤은 한 번만
+	bRevealSelectedInTree = false;
+}
+
+void FPersonaAssetEditor::DrawBoneTreeNode(int32 BoneIndex)
+{
+	const TArray<int32>& Children = BoneChildren[BoneIndex];
+	const bool bIsLeaf = Children.Num() == 0;
+
+	// 화살표로 펼치고 이름 클릭으로 선택. 처음엔 모두 펼친 상태
+	ImGuiTreeNodeFlags Flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_OpenOnDoubleClick
+		| ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_DefaultOpen;
+	if (bIsLeaf)
+	{
+		Flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
+	}
+	if (BoneIndex == SelectedBoneIndex)
+	{
+		Flags |= ImGuiTreeNodeFlags_Selected;
+	}
+
+	// 뷰포트에서 고른 본이 접힌 곳에 있으면 조상들을 펼친다
+	if (bRevealSelectedInTree && !bIsLeaf && SelectedBoneIndex >= 0 && IsAncestorOf(BoneIndex, SelectedBoneIndex))
+	{
+		ImGui::SetNextItemOpen(true);
+	}
+
+	// ID는 본 인덱스. 이름이 같은 본이 있어도 겹치지 않는다
+	// 라벨은 비우고 아이콘 + 이름을 뒤에 그린다. Image / Text는 클릭을 가로채지 않아 노드 선택은 그대로
+	const bool bIsOpen = ImGui::TreeNodeEx(reinterpret_cast<void*>(static_cast<intptr_t>(BoneIndex)), Flags, "");
+	if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen())
+	{
+		SelectedBoneIndex = BoneIndex;
+	}
+	// 불러오지 못한 아이콘은 그리지 않는다
+	UTexture2D* Icon = BoneHasWeights[BoneIndex] != 0 ? BoneIcon : BoneNonWeightedIcon;
+	if (Icon && Icon->GetResource())
+	{
+		const float IconSize = ImGui::GetTextLineHeight();
+		ImGui::SameLine();
+		ImGui::Image((ImTextureID)Icon->GetResource()->GetSRV(), ImVec2(IconSize, IconSize));
+	}
+	ImGui::SameLine();
+	ImGui::TextUnformatted(Mesh->RefSkeleton.RefBoneInfo[BoneIndex].Name.c_str());
+	if (bRevealSelectedInTree && BoneIndex == SelectedBoneIndex)
+	{
+		ImGui::SetScrollHereY(0.5f);
+	}
+
+	if (bIsOpen && !bIsLeaf)
+	{
+		for (const int32 ChildIndex : Children)
+		{
+			DrawBoneTreeNode(ChildIndex);
+		}
+		ImGui::TreePop();
+	}
 }
 
 void FPersonaAssetEditor::HandleViewportInput()
 {
 	PreviewScene->HandleCameraInput(true);
+}
+
+void FPersonaAssetEditor::SyncPreviewSkinWeightView()
+{
+	UDebugSkelMeshComponent* PreviewComponent = PreviewScene->GetPreviewComponent();
+	PreviewComponent->SetShowBoneWeight(SkinWeightViewMode != ESkinWeightViewMode::Material);
+	PreviewComponent->SetBoneOfInterest(SelectedBoneIndex);
+
+	switch (SkinWeightViewMode)
+	{
+	case ESkinWeightViewMode::Greyscale:
+		PreviewComponent->SetBoneWeightColorRamp(FSkinWeightColorRamp::Greyscale());
+		break;
+	case ESkinWeightViewMode::Turbo:
+		PreviewComponent->SetBoneWeightColorRamp(FSkinWeightColorRamp::Turbo());
+		break;
+	case ESkinWeightViewMode::Jet:
+		PreviewComponent->SetBoneWeightColorRamp(FSkinWeightColorRamp::Jet());
+		break;
+	case ESkinWeightViewMode::Viridis:
+		PreviewComponent->SetBoneWeightColorRamp(FSkinWeightColorRamp::Viridis());
+		break;
+	case ESkinWeightViewMode::Inferno:
+		PreviewComponent->SetBoneWeightColorRamp(FSkinWeightColorRamp::Inferno());
+		break;
+	default:
+		break;
+	}
 }
 
 FString FPersonaAssetEditor::GetDisplayName(const FString& AssetKey)
@@ -269,19 +414,54 @@ void FPersonaAssetEditor::DrawViewport()
 			PreviewScene->SetFloorVisible(!PreviewScene->IsFloorVisible());
 		}
 		ImGui::SeparatorText("Bones");
-		if (ImGui::MenuItem("None", nullptr, BoneDrawMode == EBoneDrawMode::None))
+		if (ImGui::RadioButton("None", BoneDrawMode == EBoneDrawMode::None))
 		{
 			BoneDrawMode = EBoneDrawMode::None;
 		}
-		if (ImGui::MenuItem("Selected", nullptr, BoneDrawMode == EBoneDrawMode::Selected))
+		if (ImGui::RadioButton("Selected", BoneDrawMode == EBoneDrawMode::Selected))
 		{
 			BoneDrawMode = EBoneDrawMode::Selected;
 		}
-		if (ImGui::MenuItem("All", nullptr, BoneDrawMode == EBoneDrawMode::All))
+		if (ImGui::RadioButton("All", BoneDrawMode == EBoneDrawMode::All))
 		{
 			BoneDrawMode = EBoneDrawMode::All;
 		}
 		ImGui::EndPopup();
+	}
+
+	ImGui::SameLine();
+	ImGui::SetNextItemWidth(250.0f);
+	if (ImGui::BeginCombo("##PersonaViewMode", GetSkinWeightViewModeLabel(SkinWeightViewMode).c_str()))
+	{
+		if (ImGui::MenuItem("Lit", nullptr, SkinWeightViewMode == ESkinWeightViewMode::Material))
+		{
+			SkinWeightViewMode = ESkinWeightViewMode::Material;
+		}
+		if (ImGui::BeginMenu("Skin Weights"))
+		{
+			if (ImGui::MenuItem("Greyscale", nullptr, SkinWeightViewMode == ESkinWeightViewMode::Greyscale))
+			{
+				SkinWeightViewMode = ESkinWeightViewMode::Greyscale;
+			}
+			if (ImGui::MenuItem("Turbo", nullptr, SkinWeightViewMode == ESkinWeightViewMode::Turbo))
+			{
+				SkinWeightViewMode = ESkinWeightViewMode::Turbo;
+			}
+			if (ImGui::MenuItem("Jet", nullptr, SkinWeightViewMode == ESkinWeightViewMode::Jet))
+			{
+				SkinWeightViewMode = ESkinWeightViewMode::Jet;
+			}
+			if (ImGui::MenuItem("Viridis", nullptr, SkinWeightViewMode == ESkinWeightViewMode::Viridis))
+			{
+				SkinWeightViewMode = ESkinWeightViewMode::Viridis;
+			}
+			if (ImGui::MenuItem("Inferno", nullptr, SkinWeightViewMode == ESkinWeightViewMode::Inferno))
+			{
+				SkinWeightViewMode = ESkinWeightViewMode::Inferno;
+			}
+			ImGui::EndMenu();
+		}
+		ImGui::EndCombo();
 	}
 
 	// 남은 영역 크기를 기록해 두면 다음 Tick에서 타깃을 맞춘다 (1프레임 지연)
@@ -295,8 +475,13 @@ void FPersonaAssetEditor::DrawViewport()
 		ImGui::Image((ImTextureID)ColorTarget->GetSRV(), ImageSize);
 
 		// 왼쪽 위 통계 (레벨 뷰포트 stat 표시처럼 이미지 위에 겹쳐 그린다)
-		const FString Stats = std::format("Bones: {}\nVertices: {}\nTriangles: {}",
+		FString Stats = std::format("Bones: {}\nVertices: {}\nTriangles: {}",
 			Mesh->RefSkeleton.GetNum(), Mesh->GetMeshData().Vertices.Num(), Mesh->GetMeshData().Indices.Num() / 3);
+		const FString DisplayInfo = GetDisplayInfo();
+		if (!DisplayInfo.empty())
+		{
+			Stats += "\n" + DisplayInfo;
+		}
 		const ImVec2 StatsPos(ImagePos.x + EditorUIScale::Px(8.0f), ImagePos.y + EditorUIScale::Px(8.0f));
 		const ImVec2 StatsSize = ImGui::CalcTextSize(Stats.c_str());
 		ImDrawList* DrawList = ImGui::GetWindowDrawList();

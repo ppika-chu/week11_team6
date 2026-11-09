@@ -50,14 +50,27 @@ bool USkeletalMeshComponent::InitializeAnimScriptInstance(bool bForceReinit)
 	{
 		return false;
 	}
+	bool bCreatedInstance = false;
 	if (!AnimScriptInstance)
 	{
 		AnimScriptInstance = NewObject<UAnimInstance>(this, InstanceClass);
 		bForceReinit = true;
+		bCreatedInstance = true;
 	}
 	if (AnimScriptInstance && (bForceReinit || !AnimScriptInstance->IsInitialized()))
 	{
 		AnimScriptInstance->InitializeAnimation();
+		// 새로 만든 SingleNode 인스턴스에만 Details 설정을 넘긴다. 기존 인스턴스는 재생 상태를 유지한다
+		// (UE InitializeAnimScriptInstance: 새 인스턴스는 AnimationData.Initialize, 기존 것은 PopulateFrom으로 이어받음)
+		if (UAnimSingleNodeInstance* SingleNodeInstance = GetSingleNodeInstance(); SingleNodeInstance && bCreatedInstance)
+		{
+			// UE FSingleAnimationPlayData::Initialize와 같은 순서
+			SingleNodeInstance->SetAnimationAsset(AnimToPlay);
+			SingleNodeInstance->SetPosition(SavedPosition, false);
+			SingleNodeInstance->SetPlayRate(SavedPlayRate);
+			SingleNodeInstance->SetPlaying(bSavedPlaying);
+			SingleNodeInstance->SetLooping(bSavedLooping);
+		}
 		return true;
 	}
 	return false;
@@ -182,6 +195,50 @@ void USkeletalMeshComponent::InitializeComponent()
 	InitAnim(false);
 }
 
+void USkeletalMeshComponent::BeginPlay()
+{
+	Super::BeginPlay();
+	// 씬을 불러올 때는 등록(OnRegister) 뒤에 프로퍼티가 채워진다.
+	// 저장된 Animation Mode와 지금 인스턴스 종류가 다르면 다시 만들어 저장된 설정을 적용한다.
+	const bool bWantsSingleNode = AnimationMode == EAnimationMode::AnimationSingleNode;
+	if (AnimScriptInstance && bWantsSingleNode != (GetSingleNodeInstance() != nullptr))
+	{
+		ClearAnimScriptInstance();
+	}
+	InitAnim(false);
+}
+
+namespace
+{
+	// UE FSingleAnimationPlayData의 멤버에 해당하는 프로퍼티
+	bool IsAnimationDataProperty(const FString& PropertyName)
+	{
+		return PropertyName == "AnimToPlay" || PropertyName == "bSavedLooping" || PropertyName == "bSavedPlaying" ||
+			PropertyName == "SavedPosition" || PropertyName == "SavedPlayRate";
+	}
+}
+
+void USkeletalMeshComponent::PostEditChangeProperty(const FProperty& Property)
+{
+	Super::PostEditChangeProperty(Property);
+	// Details가 값을 직접 바꾼 뒤 부르므로 SetAnimationMode의 변경 비교를 쓸 수 없다. 인스턴스를 새로 만들어 적용한다
+	if (Property.Name == "AnimationMode" || IsAnimationDataProperty(Property.Name))
+	{
+		ClearAnimScriptInstance();
+		InitAnim(true);
+	}
+}
+
+bool USkeletalMeshComponent::CanEditChange(const FProperty& Property) const
+{
+	// Anim to Play 묶음은 Use Animation Asset 모드에서만 편집한다 (UE는 모드에 맞지 않는 칸을 숨긴다)
+	if (IsAnimationDataProperty(Property.Name))
+	{
+		return AnimationMode == EAnimationMode::AnimationSingleNode;
+	}
+	return Super::CanEditChange(Property);
+}
+
 void USkeletalMeshComponent::TickComponent(float DeltaTime)
 {
 	Super::TickComponent(DeltaTime);
@@ -259,12 +316,17 @@ void USkeletalMeshComponent::RefreshBoneTransforms()
 		AnimScriptInstance->EvaluateAnimation(EvaluatedPose);
 		if (!FinalizePoseEvaluationResult(EvaluatedPose))
 		{
+			AnimScriptInstance->DispatchQueuedAnimEvents();
 			return;
 		}
 	}
 
 	FillComponentSpaceTransforms(BoneSpaceTransforms);
 	FinalizeBoneTransform();
+	if (AnimScriptInstance)
+	{
+		AnimScriptInstance->DispatchQueuedAnimEvents();
+	}
 }
 
 bool USkeletalMeshComponent::FinalizePoseEvaluationResult(const FAnimPose& InFinalPose)

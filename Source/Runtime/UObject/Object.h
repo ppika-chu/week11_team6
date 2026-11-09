@@ -31,6 +31,11 @@ public:                                                    \
 #define PROPERTY_FLAGS(PropertyName, Flags) \
 	InClass->AddProperty<decltype(ThisClass::PropertyName)>(#PropertyName, offsetof(ThisClass, PropertyName), Flags);
 
+// int32 크기 enum. 뒤에 값 순서대로 표시 이름을 적는다 (예: PROPERTY_ENUM(Mode, "Use A", "Use B"))
+// UE는 UENUM/UMETA(DisplayName)로 자동 등록하지만 코드 생성기가 없어 이름을 직접 넘긴다.
+#define PROPERTY_ENUM(PropertyName, ...) \
+	InClass->AddEnumProperty<decltype(ThisClass::PropertyName)>(#PropertyName, offsetof(ThisClass, PropertyName), { __VA_ARGS__ });
+
 #define PROPERTY_TYPE_FLAGS(PropertyName, PropertyType, Flags) \
 	InClass->AddProperty<decltype(ThisClass::PropertyName)>(#PropertyName, offsetof(ThisClass, PropertyName), EPropertyType::##PropertyType, Flags);
 
@@ -127,6 +132,8 @@ public:
 	virtual void Serialize(FStructuredArchive::FRecord Record);
 
 	virtual void PostEditChangeProperty(const FProperty& Property) {};
+	// false면 Details에서 비활성으로 그린다. 다른 프로퍼티 값에 따라 편집 가능 여부가 바뀔 때 쓴다 (UE UObject::CanEditChange)
+	virtual bool CanEditChange(const FProperty& Property) const { return true; }
 
 	void* operator new(uint64 Size)
 	{

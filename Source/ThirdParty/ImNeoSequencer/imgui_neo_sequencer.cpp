@@ -162,6 +162,13 @@ namespace ImGui
 
         const auto hovered = ItemHoverable(pointerRect, GetCurrentWindow()->GetID("##_top_selector_neo"), ImGuiItemFlags_None);
 
+        // HitoriEngine: 언리얼 타임라인처럼 위쪽 눈금 줄을 눌러도 현재 프레임을 옮긴다
+        const ImRect topBarRect{
+                ImVec2{timelineXRange.x, context.TopBarStartCursor.y},
+                ImVec2{timelineXRange.y, context.TopBarStartCursor.y + context.TopBarSize.y}
+        };
+        const auto topBarHovered = ItemHoverable(topBarRect, GetCurrentWindow()->GetID("##_top_bar_neo"), ImGuiItemFlags_None);
+
         context.CurrentFrameColor = GetStyleNeoSequencerColorVec4(ImGuiNeoSequencerCol_FramePointer);
 
         if (hovered)
@@ -198,7 +205,8 @@ namespace ImGui
             }
         }
 
-        if (hovered && IsMouseDown(ImGuiMouseButton_Left) && !context.HoldingCurrentFrame)
+        if (((hovered && IsMouseDown(ImGuiMouseButton_Left)) || (topBarHovered && IsMouseClicked(ImGuiMouseButton_Left)))
+            && !context.HoldingCurrentFrame)
         {
             context.HoldingCurrentFrame = true;
             context.CurrentFrameColor = GetStyleNeoSequencerColorVec4(ImGuiNeoSequencerCol_FramePointerPressed);
@@ -448,6 +456,9 @@ namespace ImGui
         idCounter = 0;
     }
 
+    // HitoriEngine: NeoSetCurrentFrameLabel로 받은 글자. 그린 뒤 비운다
+    static char currentFrameLabel[128] = {};
+
     static void renderCurrentFrame(ImGuiNeoSequencerInternalData& context)
     {
         const auto bb = getCurrentFrameBB(context.CurrentFrame, context);
@@ -462,6 +473,31 @@ namespace ImGui
                 style.CurrentFrameLineWidth,
                 drawList
         );
+
+        // HitoriEngine: 손잡이 오른쪽에 글자. 오른쪽 끝을 넘으면 왼쪽에 그린다
+        if (currentFrameLabel[0] != 0)
+        {
+            const auto labelSize = CalcTextSize(currentFrameLabel);
+            const float gap = GetStyle().ItemInnerSpacing.x;
+            const float rightEdge = context.TopBarStartCursor.x + context.Size.x;
+            float labelX = bb.Max.x + gap;
+            if (labelX + labelSize.x > rightEdge)
+                labelX = bb.Min.x - gap - labelSize.x;
+            const ImVec2 labelPos{labelX, context.TopBarStartCursor.y + (context.TopBarSize.y - labelSize.y) * 0.5f};
+
+            // Begin에서 걸어 둔 트랙 영역 클립을 벗어나 눈금 줄에도 그려지게 시퀀서 전체로 바꾼다
+            drawList->PushClipRect(context.TopLeftCursor, context.TopLeftCursor + context.Size, false);
+            drawList->AddRectFilled(labelPos - ImVec2{2.0f, 0.0f}, labelPos + labelSize + ImVec2{2.0f, 0.0f},
+                                    ColorConvertFloat4ToU32(GetStyleNeoSequencerColorVec4(ImGuiNeoSequencerCol_TopBarBg)));
+            drawList->AddText(labelPos, ColorConvertFloat4ToU32(context.CurrentFrameColor), currentFrameLabel);
+            drawList->PopClipRect();
+            currentFrameLabel[0] = 0;
+        }
+    }
+
+    void NeoSetCurrentFrameLabel(const char* label)
+    {
+        snprintf(currentFrameLabel, sizeof(currentFrameLabel), "%s", label ? label : "");
     }
 
     static float calculateZoomBarHeight()

@@ -35,6 +35,8 @@
 #include "GameFramework/Actor.h"
 #include "Core/EngineLog.h"
 #include "Render/SkeletalMesh.h"
+#include "Animation/AnimationAsset.h"
+#include "Animation/Skeleton.h"
 #include "Math/Color.h"
 #include <algorithm>
 
@@ -506,6 +508,80 @@ void DrawSkeletalMeshSlot(UObject* Owner, USkeletalMesh** SkeletalMeshPtr)
 		}
 		ImGui::EndCombo();
 	}
+}
+
+// 스켈레탈 메시 컴포넌트면 메시와 스켈레톤이 같은 애니메이션만 보여 준다 (UE Anim to Play 선택 칸의 스켈레톤 필터)
+bool DrawAnimationAssetSlot(UObject* Owner, UAnimationAsset** AnimationPtr)
+{
+	UAnimationAsset* Current = *AnimationPtr;
+	const FString CurrentPath = Current ? Current->GetPath() : "";
+	const FString CurrentFileName = Current ? GetAssetDisplayName(CurrentPath) : "None";
+
+	const USkeletalMeshComponent* MeshComponent = Cast<USkeletalMeshComponent>(Owner);
+	const USkeletalMesh* Mesh = MeshComponent ? MeshComponent->GetSkeletalMesh() : nullptr;
+	const USkeleton* RequiredSkeleton = Mesh ? Mesh->Skeleton : nullptr;
+
+	ImGui::SetNextItemWidth(-1.0f);
+	EditorUIScale::LimitNextComboPopupWidth();
+	const bool bOpen = ImGui::BeginCombo("##AnimationAsset", CurrentFileName.c_str());
+	if (ImGui::IsItemHovered() && Current)
+	{
+		ImGui::SetTooltip("%s", CurrentPath.c_str());
+	}
+	if (!bOpen)
+	{
+		return false;
+	}
+
+	bool bChanged = false;
+	if (ImGui::Selectable("None", Current == nullptr) && Current)
+	{
+		*AnimationPtr = nullptr;
+		bChanged = true;
+	}
+
+	struct FAnimationItem
+	{
+		FString DisplayName;
+		FString Path;
+		UAnimationAsset* Animation;
+	};
+	TArray<FAnimationItem> Items;
+	for (TObjectIterator<UAnimationAsset> Itr; Itr; ++Itr)
+	{
+		// 스켈레톤이 다르면 SingleNodeInstance가 받지 않으므로 목록에서 뺀다
+		if (Itr->IsRetired() || (MeshComponent && Itr->GetSkeleton() != RequiredSkeleton))
+		{
+			continue;
+		}
+		const FString ItemPath = Itr->GetPath();
+		Items.Add({ GetAssetDisplayName(ItemPath), ItemPath, *Itr });
+	}
+	std::sort(Items.begin(), Items.end(), [](const FAnimationItem& A, const FAnimationItem& B)
+		{ return _stricmp(A.DisplayName.c_str(), B.DisplayName.c_str()) < 0; });
+
+	for (const FAnimationItem& Item : Items)
+	{
+		const bool bSelected = Item.Animation == Current;
+		ImGui::PushID(Item.Animation);
+		const bool bClicked = ImGui::Selectable(Item.DisplayName.c_str(), bSelected);
+		if (ImGui::IsItemHovered())
+		{
+			ImGui::SetTooltip("%s", Item.Path.c_str());
+		}
+		if (bClicked && !bSelected)
+		{
+			*AnimationPtr = Item.Animation;
+			bChanged = true;
+		}
+		ImGui::PopID();
+		if (bSelected)
+		{
+			ImGui::SetItemDefaultFocus();
+		}
+	}
+	ImGui::EndCombo();
+	return bChanged;
 }
 
 // 탐색기나 드래그로 고른 파일을 적용한다. 스크립트는 Assets/Scripts 기준으로 저장되므로 밖의 파일은 받지 않는다.
@@ -1321,6 +1397,33 @@ void DrawProperty(UObject* Object, const FProperty& Property, ImFont* CustomFont
 		{
 			DrawSkeletalMeshSlot(Object, reinterpret_cast<USkeletalMesh**>(ObjPtr));
 		}
+		else if (Property.Class == UAnimationAsset::StaticClass())
+		{
+			bChanged = DrawAnimationAssetSlot(Object, reinterpret_cast<UAnimationAsset**>(ObjPtr));
+		}
+		break;
+	}
+	case EPropertyType::Enum:
+	{
+		int32* Value = static_cast<int32*>(ValuePtr);
+		const FString Preview = Property.GetEnumNameStringByValue(*Value);
+		if (ImGui::BeginCombo(Label.c_str(), Preview.c_str()))
+		{
+			for (int32 Index = 0; Index < Property.EnumNames.Num(); ++Index)
+			{
+				const bool bSelected = Index == *Value;
+				if (ImGui::Selectable(Property.EnumNames[Index].c_str(), bSelected) && !bSelected)
+				{
+					*Value = Index;
+					bChanged = true;
+				}
+				if (bSelected)
+				{
+					ImGui::SetItemDefaultFocus();
+				}
+			}
+			ImGui::EndCombo();
+		}
 		break;
 	}
 	default:
@@ -1378,7 +1481,7 @@ void DrawProperties(UObject* Object, ImFont* CustomFont)
 					continue;
 				}
 
-				const bool bReadOnly = Property.HasAnyFlags(CPF_EditConst);
+				const bool bReadOnly = Property.HasAnyFlags(CPF_EditConst) || !Object->CanEditChange(Property);
 				if (bReadOnly)
 				{
 					ImGui::BeginDisabled();

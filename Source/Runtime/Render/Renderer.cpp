@@ -1322,6 +1322,15 @@ void FRenderer::UpdateMaterialParams(const FRenderPacket& RenderPacket)
 		}
 		break;
 	}
+	case EMaterialParamLayout::BoneWeight:
+	{
+		if (RenderPacket.Material->ParamBuffer && RenderPacket.MaterialParamData)
+		{
+			RenderCommand::UpdateBufferData(RenderPacket.Material->ParamBuffer.get(), RenderPacket.MaterialParamData, RenderPacket.MaterialParamDataSize);
+			RenderCommand::BindConstantBuffer(1, RenderPacket.Material->ParamBuffer.get(), EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel);
+		}
+		break;
+	}
 	case EMaterialParamLayout::None:
 	{
 		break;

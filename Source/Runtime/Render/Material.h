@@ -14,7 +14,8 @@ enum class EMaterialParamLayout
 {
 	None,
 	StaticMesh,
-	ParticleSubUV
+	ParticleSubUV,
+	BoneWeight,
 };
 
 struct FStaticMeshMaterialParams
@@ -33,6 +34,17 @@ struct FStaticMeshMaterialParams
 	float EmissiveFactor = 1.f; // 자체 발광 강도 계수
 };
 static_assert(sizeof(FStaticMeshMaterialParams) == 96, "UberLit.hlsl cbuffer MaterialParams 크기와 맞아야 한다");
+
+inline constexpr int32 MaxSkinWeightRampStops = 16;
+
+struct FSkinWeightParams
+{
+	FVector4 RampStops[MaxSkinWeightRampStops];
+	int32 StopCount = 0;
+	int32 SelectedBone = -1;
+	uint32 Padding[2]{};
+};
+static_assert(sizeof(FSkinWeightParams) == 272, "BoneWeightShader.hlsl cbuffer BoneWeightParams 크기와 맞아야 한다");
 
 class UMaterial : public UMaterialInterface
 {

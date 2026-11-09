@@ -4,6 +4,9 @@
 #include "BlendSpace.h"
 #include "AnimSequence.h"
 #include "AnimationRuntime.h"
+#include "AnimNotifies/AnimNotify.h"
+#include "AnimNotifies/AnimNotifyState.h"
+#include <utility>
 #include "Components/SkeletalMeshComponent.h"
 
 void UAnimInstance::InitializeAnimation()
@@ -23,6 +26,7 @@ void UAnimInstance::UninitializeAnimation()
 	bUninitialized = true;
 	RootNode = nullptr;
 	NativeUninitializeAnimation();
+	EndNotifyStates();
 }
 
 void UAnimInstance::UpdateAnimation(float DeltaSeconds)
@@ -32,7 +36,10 @@ void UAnimInstance::UpdateAnimation(float DeltaSeconds)
 		return;
 	}
 
+	ClearQueuedAnimEvents();
+	DeltaTime = DeltaSeconds;
 	NativeUpdateAnimation(DeltaSeconds);
+	bNeedsQueuedAnimEventsDispatched = true;
 	if (RootNode)
 	{
 		RootNode->Update(DeltaSeconds);
@@ -61,7 +68,7 @@ USkeletalMeshComponent* UAnimInstance::GetSkelMeshComponent() const
 	return Cast<USkeletalMeshComponent>(GetOuter());
 }
 
-void UAnimInstance::BlendSpaceAdvanceImmediate(UBlendSpace* BlendSpace, const FVector& BlendInput, TArray<FBlendSampleData>& BlendSampleDataCache, bool bLooping, float PlayRate, float DeltaSeconds, float& CurrentTime, int32& CachedTriangulationIndex)
+void UAnimInstance::BlendSpaceAdvanceImmediate(UBlendSpace* BlendSpace, const FVector& BlendInput, TArray<FBlendSampleData>& BlendSampleDataCache, bool bLooping, float PlayRate, float DeltaSeconds, float& CurrentTime, int32& CachedTriangulationIndex, float EffectiveBlendWeight)
 {
 	if (!BlendSpace || !BlendSpace->GetSamplesFromBlendInput(BlendInput, BlendSampleDataCache, CachedTriangulationIndex))
 	{
@@ -86,5 +93,134 @@ void UAnimInstance::BlendSpaceAdvanceImmediate(UBlendSpace* BlendSpace, const FV
 		const float SampleLength = Sample.Animation->GetPlayLength();
 		Sample.PreviousTime = PreviousNormalizedTime * SampleLength;
 		Sample.Time = CurrentTime * SampleLength;
+	}
+	// Cache는 Weight 내림차순이다. 동률일 때도 첫 Sample 하나만 선택한다.
+	const FBlendSampleData& HighestWeightSample = BlendSampleDataCache[0];
+	const float NormalizedDelta = bLooping ? DeltaSeconds * PlayRate / BlendedLength : CurrentTime - PreviousNormalizedTime;
+	FAnimNotifyContext Context(bLooping);
+	HighestWeightSample.Animation->GetAnimNotifies(HighestWeightSample.PreviousTime, NormalizedDelta * HighestWeightSample.Animation->GetPlayLength(), Context);
+	NotifyQueue.AddAnimNotifies(Context.ActiveNotifies, EffectiveBlendWeight);
+}
+
+void UAnimInstance::SequenceAdvanceImmediate(UAnimSequenceBase* Sequence, bool bLooping, float PlayRate, float DeltaSeconds, float& CurrentTime, float EffectiveBlendWeight)
+{
+	if (!Sequence)
+	{
+		return;
+	}
+	const float PreviousTime = CurrentTime;
+	const float MoveDelta = DeltaSeconds * PlayRate * Sequence->RateScale;
+	FAnimationRuntime::AdvanceTime(bLooping, MoveDelta, CurrentTime, Sequence->GetPlayLength());
+	FAnimNotifyContext Context(bLooping);
+	Sequence->GetAnimNotifies(PreviousTime, MoveDelta, Context);
+	NotifyQueue.AddAnimNotifies(Context.ActiveNotifies, EffectiveBlendWeight);
+}
+
+void UAnimInstance::ClearQueuedAnimEvents()
+{
+	NotifyQueue.Reset();
+	bNeedsQueuedAnimEventsDispatched = false;
+	++NotifyDispatchSerial;
+}
+
+void UAnimInstance::DispatchQueuedAnimEvents()
+{
+	if (bNeedsQueuedAnimEventsDispatched)
+	{
+		bNeedsQueuedAnimEventsDispatched = false;
+		TriggerAnimNotifies(DeltaTime);
+	}
+}
+
+void UAnimInstance::TriggerAnimNotifies(float DeltaSeconds)
+{
+	++NotifyDispatchSerial;
+	TArray<FAnimNotifyEventReference> QueuedNotifies = std::move(NotifyQueue.AnimNotifies);
+	const uint64 DispatchSerial = NotifyDispatchSerial;
+	TArray<FAnimNotifyEvent> NewActiveAnimNotifyState;
+	TArray<FAnimNotifyEventReference> NewActiveAnimNotifyEventReference;
+	for (const FAnimNotifyEventReference& EventReference : QueuedNotifies)
+	{
+		const FAnimNotifyEvent* Event = EventReference.GetNotify();
+		if (Event && Event->NotifyStateClass && NewActiveAnimNotifyState.Find(*Event) == -1)
+		{
+			NewActiveAnimNotifyState.Add(*Event);
+			NewActiveAnimNotifyEventReference.Add(EventReference);
+		}
+		if (Event && !Event->NotifyStateClass)
+		{
+			TriggerSingleAnimNotify(EventReference);
+			// Callback은 모드·클립을 바꾸거나 Component를 해제할 수 있다.
+			if (FindLiveObjectByAddress(this) != this || NotifyDispatchSerial != DispatchSerial)
+			{
+				return;
+			}
+		}
+	}
+
+	for (int32 Index = 0; Index < ActiveAnimNotifyState.Num(); ++Index)
+	{
+		const FAnimNotifyEvent& Event = ActiveAnimNotifyState[Index];
+		if (NewActiveAnimNotifyState.Find(Event) == -1)
+		{
+			FAnimNotifyEventReference Reference = ActiveAnimNotifyEventReference[Index];
+			Reference.SetNotify(&Event);
+			Event.NotifyStateClass->NotifyEnd(GetSkelMeshComponent(), Cast<UAnimSequenceBase>(const_cast<UObject*>(Reference.GetSourceObject())), Reference);
+		}
+	}
+	for (int32 Index = 0; Index < NewActiveAnimNotifyState.Num(); ++Index)
+	{
+		const FAnimNotifyEvent& Event = NewActiveAnimNotifyState[Index];
+		if (ActiveAnimNotifyState.Find(Event) == -1)
+		{
+			FAnimNotifyEventReference Reference = NewActiveAnimNotifyEventReference[Index];
+			Reference.SetNotify(&Event);
+			Event.NotifyStateClass->NotifyBegin(GetSkelMeshComponent(), Cast<UAnimSequenceBase>(const_cast<UObject*>(Reference.GetSourceObject())), Event.GetDuration(), Reference);
+		}
+	}
+	ActiveAnimNotifyState = std::move(NewActiveAnimNotifyState);
+	ActiveAnimNotifyEventReference = std::move(NewActiveAnimNotifyEventReference);
+	for (int32 Index = 0; Index < ActiveAnimNotifyState.Num(); ++Index)
+	{
+		const FAnimNotifyEvent& Event = ActiveAnimNotifyState[Index];
+		FAnimNotifyEventReference Reference = ActiveAnimNotifyEventReference[Index];
+		Reference.SetNotify(&Event);
+		Event.NotifyStateClass->NotifyTick(GetSkelMeshComponent(), Cast<UAnimSequenceBase>(const_cast<UObject*>(Reference.GetSourceObject())), DeltaSeconds, Reference);
+	}
+}
+
+void UAnimInstance::TriggerSingleAnimNotify(const FAnimNotifyEventReference& EventReference)
+{
+	const FAnimNotifyEvent* Event = EventReference.GetNotify();
+	if (!Event)
+	{
+		return;
+	}
+	const uint64 DispatchSerial = NotifyDispatchSerial;
+	if (HandleNotify(*Event))
+	{
+		return;
+	}
+	if (FindLiveObjectByAddress(this) != this || NotifyDispatchSerial != DispatchSerial)
+	{
+		return;
+	}
+	if (Event->Notify)
+	{
+		Event->Notify->Notify(GetSkelMeshComponent(), Cast<UAnimSequenceBase>(const_cast<UObject*>(EventReference.GetSourceObject())), EventReference);
+	}
+	// TODO: AnimNotify_ 이름 함수 호출 연결 예정. 현재 이름 이벤트는 HandleNotify에서 처리한다.
+}
+
+void UAnimInstance::EndNotifyStates()
+{
+	ClearQueuedAnimEvents();
+	TArray<FAnimNotifyEvent> EndedStates = std::move(ActiveAnimNotifyState);
+	TArray<FAnimNotifyEventReference> EndedReferences = std::move(ActiveAnimNotifyEventReference);
+	for (int32 Index = 0; Index < EndedStates.Num(); ++Index)
+	{
+		FAnimNotifyEventReference Reference = EndedReferences[Index];
+		Reference.SetNotify(&EndedStates[Index]);
+		EndedStates[Index].NotifyStateClass->NotifyEnd(GetSkelMeshComponent(), Cast<UAnimSequenceBase>(const_cast<UObject*>(Reference.GetSourceObject())), Reference);
 	}
 }

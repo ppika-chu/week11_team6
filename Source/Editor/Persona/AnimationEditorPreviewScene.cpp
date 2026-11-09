@@ -4,6 +4,7 @@
 
 #include "Asset/AssetManager.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "DebugSkelMeshComponent.h"
 #include "Engine/Level.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor/DirectionalLightActor.h"
@@ -59,6 +60,26 @@ void FAnimationEditorPreviewScene::SetMeshVisible(bool bVisible)
 {
 	bShowMesh = bVisible;
 	PreviewComponent->SetVisible(bShowMesh);
+}
+
+void FAnimationEditorPreviewScene::SetAnimationPlaybackSpeedMode(EAnimationPlaybackSpeeds::Type InMode)
+{
+	AnimationPlaybackSpeedMode = InMode;
+
+	if (PreviewWorld)
+	{
+		const float AnimationSpeed = (InMode == EAnimationPlaybackSpeeds::Custom)
+			? GetCustomAnimationSpeed()
+			: EAnimationPlaybackSpeeds::Values[AnimationPlaybackSpeedMode];
+		// 0 ~ 10배로 제한된다
+		PreviewWorld->SetTimeScale(AnimationSpeed);
+	}
+}
+
+void FAnimationEditorPreviewScene::SetCustomAnimationSpeed(float InAnimationSpeed)
+{
+	CustomAnimationSpeed = InAnimationSpeed;
+	SetAnimationPlaybackSpeedMode(EAnimationPlaybackSpeeds::Custom);
 }
 
 void FAnimationEditorPreviewScene::SetFloorVisible(bool bVisible)
@@ -262,7 +283,7 @@ void FAnimationEditorPreviewScene::CreatePreviewScene()
 	// 언리얼 PersonaToolkit처럼 빈 액터를 원점에 두고 스켈레탈 메시 컴포넌트를 루트로 붙인다
 	// 액터에 루트가 없으면 AddComponent가 루트로 삼는다. SetSkeletalMesh가 포즈를 Bind Pose로 초기화한다
 	PreviewActor = PreviewWorld->SpawnActor<AActor>(NAME_None);
-	PreviewComponent = Cast<USkeletalMeshComponent>(PreviewActor->AddComponent(USkeletalMeshComponent::StaticClass(), FName("PreviewMesh")));
+	PreviewComponent = Cast<UDebugSkelMeshComponent>(PreviewActor->AddComponent(UDebugSkelMeshComponent::StaticClass(), FName("PreviewMesh")));
 	PreviewComponent->SetSkeletalMesh(Mesh);
 	PreviewComponent->SetVisible(bShowMesh);
 }

@@ -218,6 +218,24 @@ void UObject::Serialize(json& Handle, bool bIsLoading)
 				}
 				break;
 			}
+			case EPropertyType::Enum:
+			{
+				int32& Value = *static_cast<int32*>(Ptr);
+				if (bIsLoading)
+				{
+					// 모르는 이름이면 생성자 기본값을 유지한다
+					const int32 Loaded = Property.GetEnumValueByName(Handle[Property.Name].get<std::string>());
+					if (Loaded != INDEX_NONE)
+					{
+						Value = Loaded;
+					}
+				}
+				else
+				{
+					Handle[Property.Name] = Property.GetEnumNameStringByValue(Value);
+				}
+				break;
+			}
 			case EPropertyType::Object:
 			{
 				UObject*& Value = *static_cast<UObject**>(Ptr);
@@ -342,6 +360,26 @@ void UObject::SerializeScriptProperties(FStructuredArchive::FSlot Slot)
 			case EPropertyType::Transform:
 				Value << *static_cast<FTransform*>(Ptr);
 				break;
+			case EPropertyType::Enum:
+			{
+				// 숫자가 아니라 이름으로 저장해 enum 순서가 바뀌어도 씬이 맞게 열린다 (UE와 같다)
+				int32& EnumValue = *static_cast<int32*>(Ptr);
+				FString EnumName = bIsLoading ? FString() : Property.GetEnumNameStringByValue(EnumValue);
+				Value << EnumName;
+				if (bIsLoading)
+				{
+					const int32 Loaded = Property.GetEnumValueByName(EnumName);
+					if (Loaded != INDEX_NONE)
+					{
+						EnumValue = Loaded;
+					}
+					else
+					{
+						HTR_LOG(Warning, "Load: unknown enum name '{}' for {}, keeping default", EnumName, Property.Name);
+					}
+				}
+				break;
+			}
 			case EPropertyType::Object:
 			{
 				UObject*& Ref = *static_cast<UObject**>(Ptr);

@@ -25,6 +25,16 @@ constexpr const char* BoneNonWeightedIcon = "Resources/Icons/Skeletal/BoneNonWei
 constexpr const char* ResetToDefaultIcon = "Resources/Icons/Skeletal/ResetToDefault.png";
 constexpr const char* GizmoWorldIcon = "Resources/Icons/Gizmo/globe.png";
 constexpr const char* GizmoLocalIcon = "Resources/Icons/Gizmo/transform-local.png";
+// Animation Editor 재생 버튼. 언리얼 Editor/Slate/Sequencer/PlaybackControls의 SVG를 PNG로 바꾼 것
+constexpr const char* AnimToFrontIcon = "Resources/Icons/Animation/PlayControlsToFront.png";
+constexpr const char* AnimToPreviousIcon = "Resources/Icons/Animation/PlayControlsToPrevious.png";
+constexpr const char* AnimPlayReverseIcon = "Resources/Icons/Animation/PlayControlsPlayReverse.png";
+constexpr const char* AnimPlayForwardIcon = "Resources/Icons/Animation/PlayControlsPlayForward.png";
+constexpr const char* AnimPauseIcon = "Resources/Icons/Animation/PlayControlsPause.png";
+constexpr const char* AnimToNextIcon = "Resources/Icons/Animation/PlayControlsToNext.png";
+constexpr const char* AnimToEndIcon = "Resources/Icons/Animation/PlayControlsToEnd.png";
+constexpr const char* AnimLoopingIcon = "Resources/Icons/Animation/PlayControlsLooping.png";
+constexpr const char* AnimNoLoopingIcon = "Resources/Icons/Animation/PlayControlsNoLooping.png";
 // 프리뷰 배경. 언리얼 에셋 뷰어 기본 큐브맵(EpicQuadPanorama_CC+EV1)을 내보낸 것
 constexpr const char* AssetViewerSkyPanorama = "Resources/SkySphere/AssetViewerSky.hdr";
 
