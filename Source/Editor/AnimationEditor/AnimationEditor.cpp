@@ -268,7 +268,7 @@ void FAnimationEditor::DrawNotifiesTrack(float FrameRate) const
 	TArray<int32> NotifyFrames;
 	for (const FAnimNotifyEvent& Notify : Sequence->Notifies)
 	{
-		NotifyFrames.Add(TimeToFrame(Notify.TriggerTime, FrameRate));
+		NotifyFrames.Add(TimeToFrame(Notify.GetTime(), FrameRate));
 	}
 	for (int32 i = 0; i < NotifyFrames.Num(); ++i)
 	{
@@ -276,7 +276,7 @@ void FAnimationEditor::DrawNotifiesTrack(float FrameRate) const
 		if (ImGui::IsNeoKeyframeHovered())
 		{
 			const FAnimNotifyEvent& Notify = Sequence->Notifies[i];
-			ImGui::SetTooltip("%s (%.2f s)", Notify.NotifyName.ToString().c_str(), Notify.TriggerTime);
+			ImGui::SetTooltip("%s (%.2f s)", Notify.NotifyName.ToString().c_str(), Notify.GetTime());
 		}
 	}
 	ImGui::EndNeoTimeLine();
