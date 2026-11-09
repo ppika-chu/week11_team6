@@ -16,7 +16,7 @@ namespace
 void FBlendSpaceData::GetSamples1D(TArray<FWeightedBlendSample>& OutWeightedSamples, float NormalizedSamplePosition, int32& InOutSegmentIndex) const
 {
 	OutWeightedSamples.Reset();
-	if (Segments.IsEmpty() || !std::isfinite(NormalizedSamplePosition))
+	if (Segments.IsEmpty())
 	{
 		InOutSegmentIndex = -1;
 		return;
@@ -228,10 +228,6 @@ bool UBlendSpace::GetSamplesFromBlendInput(const FVector& BlendInput, TArray<FBl
 	}
 	const FBlendParameter& Parameter = BlendParameters[Axis];
 	const float Range = Parameter.Max - Parameter.Min;
-	if (!std::isfinite(Range) || Range <= 0.0f)
-	{
-		return false;
-	}
 	const float NormalizedInput = (FMath::Clamp(BlendInput[Axis], Parameter.Min, Parameter.Max) - Parameter.Min) / Range;
 	TArray<FWeightedBlendSample> WeightedSamples;
 	BlendSpaceData.GetSamples1D(WeightedSamples, NormalizedInput, InOutCachedTriangulationIndex);

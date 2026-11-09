@@ -259,12 +259,17 @@ void USkeletalMeshComponent::RefreshBoneTransforms()
 		AnimScriptInstance->EvaluateAnimation(EvaluatedPose);
 		if (!FinalizePoseEvaluationResult(EvaluatedPose))
 		{
+			AnimScriptInstance->DispatchQueuedAnimEvents();
 			return;
 		}
 	}
 
 	FillComponentSpaceTransforms(BoneSpaceTransforms);
 	FinalizeBoneTransform();
+	if (AnimScriptInstance)
+	{
+		AnimScriptInstance->DispatchQueuedAnimEvents();
+	}
 }
 
 bool USkeletalMeshComponent::FinalizePoseEvaluationResult(const FAnimPose& InFinalPose)
