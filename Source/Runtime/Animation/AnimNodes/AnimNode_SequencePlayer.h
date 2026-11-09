@@ -57,11 +57,11 @@ public:
 	}
 	void Evaluate(FAnimPose& OutPose)
 	{
+		OutPose.LocalTransforms.Reset();
 		if (SequencePlayer)
 		{
 			SequencePlayer->GetAnimationPose(OutPose,FAnimExtractContext(CurrentTime));
 		}
-		OutPose.LocalTransforms.Reset();
 	}
 
 	UAnimSequence* GetSequencePlayer() const { return SequencePlayer; }
