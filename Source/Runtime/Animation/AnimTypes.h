@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "Core/NameTypes.h"
 #include "Containers/Array.h"
@@ -59,7 +59,7 @@ struct FAnimNotifyEvent
 	float GetTriggerTime() const;
 	float GetEndTriggerTime() const;
 
-	// TODO: 이벤트 편집·로드 시 경계 Offset 갱신 연결 예정.
+	// 이벤트 편집·로드 시 클립 경계에 맞춰 판정 Offset을 갱신한다.
 	void RefreshTriggerOffset(EAnimEventTriggerOffsets::Type PredictedOffsetType);
 	void RefreshEndTriggerOffset(EAnimEventTriggerOffsets::Type PredictedOffsetType);
 

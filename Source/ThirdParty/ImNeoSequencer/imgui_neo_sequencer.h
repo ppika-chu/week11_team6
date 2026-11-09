@@ -130,6 +130,8 @@ namespace ImGui {
     // Optional inline 0..1 value editor beside the timeline label.
     IMGUI_API bool BeginNeoTimelineEx(const char* label, bool * open = nullptr, ImGuiNeoTimelineFlags flags = ImGuiNeoTimelineFlags_None, float* value = nullptr);
     IMGUI_API void NeoKeyframe(int32_t* value);
+    // Notify 드래그 이동량을 그리기와 같은 프레임 폭으로 환산하도록 노출한다. Viewer에서 너비·줌 계산을 중복하지 않는다.
+    IMGUI_API float NeoGetPixelsPerFrame();
     IMGUI_API void NeoActiveZone(ImGuiID id, int32_t* from, int32_t* to);
     IMGUI_API void NeoActiveZoneHandle(int32_t* frame, const ImVec4& bb);
 

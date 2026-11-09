@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <format>
 #include "Editor/EditorUI/EditorPanel.h"
@@ -91,3 +91,6 @@ private:
 	std::function<bool(uint32)> ShadowCascadeDebugGetter;
 	std::function<void(uint32, bool)> ShadowCascadeDebugSetter;
 };
+
+// 공통 UObject 편집 UI. 등록된 편집 가능 Property가 바뀌면 true를 반환한다.
+bool DrawObjectProperties(UObject* Object, ImFont* CustomFont);
