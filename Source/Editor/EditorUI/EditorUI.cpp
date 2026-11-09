@@ -392,6 +392,10 @@ void FEditorUI::DrawFbxImportDialog()
 		ImGui::SameLine();
 		if (ImGui::Button("Browse...##FbxOutput")) BrowseFbxOutputDirectory();
 
+		ImGui::SeparatorText("FBX Translator");
+		ImGui::Checkbox("Keep FBX Namespace", &FbxOptions.bKeepFbxNamespace);
+		if (ImGui::IsItemHovered()) ImGui::SetTooltip("Off: remove the namespace from names (mixamorig:Hips -> Hips).\nOn: keep it with ':' replaced by '_' (mixamorig:Hips -> mixamorig_Hips).\nApplies to bone, mesh, material, texture and animation names.");
+
 		ImGui::SeparatorText("Static Meshes");
 		ImGui::PushID("StaticFbx");
 		ImGui::Checkbox("Bake Meshes", &FbxOptions.bBakeStaticMeshes);
