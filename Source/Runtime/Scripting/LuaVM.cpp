@@ -8,6 +8,9 @@
 #include "Components/PrimitiveComponent.h"
 #include "Components/PointLightComponent.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Animation/AnimationAsset.h"
+#include "Animation/AnimSingleNodeInstance.h"
+#include "Asset/AssetManager.h"
 #include "Components/SpotLightComponent.h"
 #include "Camera/CameraComponent.h"
 #include "Math/Vector.h"
@@ -731,6 +734,16 @@ void BindActorAPI(sol::state& LuaState)
 					}
 				}
 				return false; },
+		"GetSkeletalMesh", [](const AActor& Actor) -> USkeletalMeshComponent*
+		{
+				for (UActorComponent* Component : Actor.GetComponents())
+				{
+					if (USkeletalMeshComponent* SkeletalMesh = Cast<USkeletalMeshComponent>(Component))
+					{
+						return SkeletalMesh;
+					}
+				}
+				return nullptr; },
 		"GetCamera", [](const AActor& Actor) -> UCameraComponent*
 		{ return FindCameraComponent(Actor.GetRootComponent()); },
 		"GetSpotLight", [](const AActor& Actor) -> USpotLightComponent*
@@ -743,6 +756,66 @@ void BindActorAPI(sol::state& LuaState)
 					}
 				}
 				return nullptr; });
+}
+
+// Lua에는 에셋 객체 타입이 없어 Assets 기준 상대 경로로 찾는다. (UE 블루프린트는 에셋 객체를 직접 넘긴다)
+UAnimationAsset* FindAnimationAsset(const FString& AnimationPath)
+{
+	UAnimationAsset* Asset{ UAssetManager::GetAssetByPath<UAnimationAsset>(AnimationPath) };
+	if (!Asset)
+	{
+		HTR_LOG(Warning, "[Lua] Animation asset not found: {}", AnimationPath);
+	}
+	return Asset;
+}
+
+// 스켈레톤이 메시와 다르면 SingleNodeInstance가 에셋을 받지 않는다
+bool IsAnimationAccepted(const USkeletalMeshComponent& Component, const UAnimationAsset* Asset, const FString& AnimationPath)
+{
+	const UAnimSingleNodeInstance* Instance{ Component.GetSingleNodeInstance() };
+	if (Instance && Instance->GetCurrentAsset() == Asset)
+	{
+		return true;
+	}
+	HTR_LOG(Warning, "[Lua] Animation skeleton does not match the mesh: {}", AnimationPath);
+	return false;
+}
+
+// 기존 USkeletalMeshComponent 재생 함수를 같은 이름으로 연결한다. (UE BlueprintCallable)
+void BindSkeletalMeshAPI(sol::state& LuaState)
+{
+	sol::usertype<USkeletalMeshComponent> SkeletalMeshType{ LuaState.new_usertype<USkeletalMeshComponent>("USkeletalMeshComponent", sol::no_constructor) };
+	SkeletalMeshType.set_function("IsValid", &IsValidComponent<USkeletalMeshComponent>);
+	SkeletalMeshType.set_function("PlayAnimation", [](USkeletalMeshComponent& Component, const FString& AnimationPath, bool bLooping)
+		{
+			UAnimationAsset* Asset{ FindAnimationAsset(AnimationPath) };
+			if (!Asset)
+			{
+				return false;
+			}
+			Component.PlayAnimation(Asset, bLooping);
+			return IsAnimationAccepted(Component, Asset, AnimationPath);
+		});
+	SkeletalMeshType.set_function("SetAnimation", [](USkeletalMeshComponent& Component, const FString& AnimationPath)
+		{
+			UAnimationAsset* Asset{ FindAnimationAsset(AnimationPath) };
+			if (!Asset)
+			{
+				return false;
+			}
+			// SetAnimation은 SingleNode 모드일 때만 동작하므로 PlayAnimation처럼 모드를 먼저 바꾼다
+			Component.SetAnimationMode(EAnimationMode::AnimationSingleNode);
+			Component.SetAnimation(Asset);
+			return IsAnimationAccepted(Component, Asset, AnimationPath);
+		});
+	SkeletalMeshType.set_function("Play", &USkeletalMeshComponent::Play);
+	SkeletalMeshType.set_function("Stop", &USkeletalMeshComponent::Stop);
+	SkeletalMeshType.set_function("IsPlaying", &USkeletalMeshComponent::IsPlaying);
+	SkeletalMeshType.set_function("SetPosition", [](USkeletalMeshComponent& Component, float Position)
+		{ Component.SetPosition(Position); });
+	SkeletalMeshType.set_function("GetPosition", &USkeletalMeshComponent::GetPosition);
+	SkeletalMeshType.set_function("SetPlayRate", &USkeletalMeshComponent::SetPlayRate);
+	SkeletalMeshType.set_function("GetPlayRate", &USkeletalMeshComponent::GetPlayRate);
 }
 
 void BindLightAPI(sol::state& LuaState)
@@ -885,6 +958,7 @@ void FLuaVM::BindEngineAPI()
 		"ImpactNormal", &FHitResult::ImpactNormal,
 		"PenetrationDepth", &FHitResult::PenetrationDepth);
 	BindLightAPI(*State);
+	BindSkeletalMeshAPI(*State);
 	BindCameraAPI(*State);
 	BindActorAPI(*State);
 	BindSequenceAPI(*State);
