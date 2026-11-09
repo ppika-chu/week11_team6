@@ -2,6 +2,7 @@
 
 #include "Property.h"
 #include "Object.h"
+#include "Function.h"
 
 using ClassConstructor = UObject* (*)(void* Memory);
 
@@ -22,6 +23,17 @@ public:
 	UObject* GetDefaultObject();
 
 	inline const TArray<FProperty>& GetProperties() const { return Properties; }
+
+	// 클래스 초기화 중에만 등록한다. 같은 이름은 파생 클래스의 등록을 우선한다.
+	template<class T, void (T::*Method)()>
+	void AddFunction(const FName& InName)
+	{
+		Functions.Add({ InName, [](UObject* Object)
+		{
+			(static_cast<T*>(Object)->*Method)();
+		} });
+	}
+	const FFunction* FindFunctionByName(const FName& FunctionName) const;
 
 	template<class T>
 	T* GetDefaultObject()
@@ -59,6 +71,7 @@ public:
 	}
 
 private:
+	TArray<FFunction> Functions;
 	mutable int32 ClassUnique = 0;
 	friend FName MakeUniqueObjectName(UObject*, const UClass*, FName);
 };

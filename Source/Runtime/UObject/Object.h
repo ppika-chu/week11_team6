@@ -12,6 +12,7 @@
 
 class UClass;
 struct FProperty;
+struct FFunction;
 // Property Reflection
 
 #define INVALID_OBJECT ((UObject*)-1)
@@ -43,6 +44,19 @@ public:                                                    \
 	}                 \
 	;                 \
                       \
+private:
+
+// 명시적으로 등록한 void() 멤버 함수만 이름으로 호출한다. 함수 선언 자동 수집은 하지 않는다.
+#define FUNCTIONS_START() \
+public: \
+	inline static void RegisterFunctions(UClass* InClass) \
+	{
+
+#define FUNCTION(FunctionName) \
+	InClass->AddFunction<ThisClass, &ThisClass::FunctionName>(FName(#FunctionName));
+
+#define FUNCTIONS_END() \
+	} \
 private:
 
 // 추상 클래스는 생성자를 등록하지 않는다.
@@ -77,6 +91,10 @@ public:                                                                         
 			if (&ClassName::RegisterProperties != &Super::RegisterProperties)                                \
 			{                                                                                                \
 				ClassName::RegisterProperties(&c);                                                           \
+			}                                                                                                \
+			if (&ClassName::RegisterFunctions != &Super::RegisterFunctions)                                \
+			{                                                                                                \
+				ClassName::RegisterFunctions(&c);                                                            \
 			}                                                                                                \
 			RegisterClass(&c);                                                                               \
 			bIsInit = true;                                                                                  \
@@ -119,6 +137,12 @@ public:
 	void SetName(const FName& InName) { Name = FName(InName); }
 
 	inline static void RegisterProperties(UClass* InClass) {};
+	inline static void RegisterFunctions(UClass* InClass) {};
+
+	// 현재 클래스부터 부모 순서로 검색한다. 미등록 이름이면 nullptr.
+	const FFunction* FindFunction(const FName& FunctionName) const;
+	// 이 객체의 FindFunction으로 찾은 void() 함수를 실행한다. 인자 버퍼는 지원하지 않는다.
+	void ProcessEvent(const FFunction* Function);
 
 	inline void SetFlags(EObjectFlags NewFlags) { Flags |= NewFlags; }
 	inline void ClearFlags(EObjectFlags FlagsToClear) { Flags &= ~FlagsToClear; }
