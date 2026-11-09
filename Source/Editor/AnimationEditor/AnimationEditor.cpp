@@ -8,6 +8,8 @@
 #include "Animation/AnimSingleNodeInstance.h"
 #include "Animation/Skeleton.h"
 #include "Asset/AssetManager.h"
+#include "Asset/FbxImporter/FbxAssetBake.h"
+#include "Asset/FbxImporter/FbxPath.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Editor/HitoriEd/EditorResourcePaths.h"
 #include "Editor/Persona/DebugSkelMeshComponent.h"
@@ -23,12 +25,14 @@
 
 namespace
 {
-	// 저장된 배치가 없을 때의 기본 배치: 왼쪽 트리 | 가운데 뷰포트 위, 타임라인 아래
-	void BuildDefaultPanelLayout(ImGuiID DockId, const ImVec2& Size, const char* TreePanel, const char* ViewportPanel, const char* TimelinePanel)
+	// 저장된 배치가 없을 때의 기본 배치: 왼쪽 트리 | 가운데 뷰포트 위, 타임라인 아래 | 오른쪽 디테일 (언리얼과 같은 자리)
+	void BuildDefaultPanelLayout(ImGuiID DockId, const ImVec2& Size, const char* TreePanel, const char* ViewportPanel, const char* TimelinePanel, const char* DetailsPanel)
 	{
 		const float TreeWidth = EditorUIScale::Px(250.0f);
+		const float DetailsWidth = EditorUIScale::Px(280.0f);
 		const float TimelineHeight = EditorUIScale::Px(180.0f);
 		const float TreeRatio = std::clamp(TreeWidth / Size.x, 0.1f, 0.4f);
+		const float DetailsRatio = std::clamp(DetailsWidth / std::max(Size.x - TreeWidth, 1.0f), 0.1f, 0.4f);
 		const float TimelineRatio = std::clamp(TimelineHeight / Size.y, 0.15f, 0.5f);
 
 		ImGui::DockBuilderAddNode(DockId, ImGuiDockNodeFlags_DockSpace);
@@ -36,12 +40,28 @@ namespace
 
 		ImGuiID CenterId = DockId;
 		const ImGuiID TreeId = ImGui::DockBuilderSplitNode(CenterId, ImGuiDir_Left, TreeRatio, nullptr, &CenterId);
+		const ImGuiID DetailsId = ImGui::DockBuilderSplitNode(CenterId, ImGuiDir_Right, DetailsRatio, nullptr, &CenterId);
 		const ImGuiID TimelineId = ImGui::DockBuilderSplitNode(CenterId, ImGuiDir_Down, TimelineRatio, nullptr, &CenterId);
 
 		ImGui::DockBuilderDockWindow(TreePanel, TreeId);
 		ImGui::DockBuilderDockWindow(ViewportPanel, CenterId);
 		ImGui::DockBuilderDockWindow(TimelinePanel, TimelineId);
+		ImGui::DockBuilderDockWindow(DetailsPanel, DetailsId);
 		ImGui::DockBuilderFinish(DockId);
+	}
+
+	// 언리얼 Process Root Motion 메뉴 글자
+	const char* GetProcessRootMotionModeLabel(EProcessRootMotionMode Mode)
+	{
+		switch (Mode)
+		{
+		case EProcessRootMotionMode::Loop:
+			return "Loop";
+		case EProcessRootMotionMode::LoopAndReset:
+			return "Loop and Reset";
+		default:
+			return "Ignore";
+		}
 	}
 
 	// 불러오지 못한 아이콘은 글자 버튼으로 대신한다
@@ -95,6 +115,7 @@ FAnimationEditor::FAnimationEditor(UAnimSequence* InSequence, USkeletalMesh* InP
 	, TreePanelTitle(std::format("Skeleton Tree###AnimSkeletonTree_{}", InSequence->GetPath()))
 	, ViewportPanelTitle(std::format("Viewport###AnimViewport_{}", InSequence->GetPath()))
 	, TimelinePanelTitle(std::format("Timeline###AnimTimeline_{}", InSequence->GetPath()))
+	, DetailsPanelTitle(std::format("Asset Details###AnimAssetDetails_{}", InSequence->GetPath()))
 {
 	// 시각 진행과 포즈 계산은 프리뷰 월드의 TickComponent가 한다
 	PreviewScene->GetPreviewComponent()->PlayAnimation(Sequence, true);
@@ -150,7 +171,9 @@ void FAnimationEditor::OnRender()
 	// 스켈레탈 에디터처럼 루트 창이라 Level Editor나 다른 뷰어와 붙을 수 있고, 레벨 패널과는 섞이지 않는다
 	ImGui::SetNextWindowClass(&FEditorUI::GetRootWindowClass());
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-	const bool bHostVisible = ImGui::Begin(WindowTitle.c_str(), &bIsOpen,
+	// 저장하지 않은 변경이 있으면 제목 앞에 * (언리얼 탭의 * 표시). ### 뒤가 같아 창 ID는 바뀌지 않는다
+	const FString HostTitle = bDirty ? "*" + WindowTitle : WindowTitle;
+	const bool bHostVisible = ImGui::Begin(HostTitle.c_str(), &bIsOpen,
 		ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
 	ImGui::PopStyleVar();
 	bool bAnyPanelFocused = bHostVisible && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
@@ -162,7 +185,12 @@ void FAnimationEditor::OnRender()
 	PanelClass.DockingAllowUnclassed = false;
 	if (!ImGui::DockBuilderGetNode(PanelDockId))
 	{
-		BuildDefaultPanelLayout(PanelDockId, ImGui::GetWindowSize(), TreePanelTitle.c_str(), ViewportPanelTitle.c_str(), TimelinePanelTitle.c_str());
+		BuildDefaultPanelLayout(PanelDockId, ImGui::GetWindowSize(), TreePanelTitle.c_str(), ViewportPanelTitle.c_str(), TimelinePanelTitle.c_str(), DetailsPanelTitle.c_str());
+	}
+	// 패널들 위 한 줄. 언리얼 에셋 에디터 툴바의 Save 자리
+	if (bHostVisible)
+	{
+		DrawToolbar();
 	}
 	// 탭이 가려져 Begin이 false여도 호출해야 패널의 도킹이 풀리지 않는다
 	ImGui::DockSpace(PanelDockId, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_None, &PanelClass);
@@ -197,6 +225,12 @@ void FAnimationEditor::OnRender()
 	}
 	ImGui::End();
 
+	if (BeginPanel(DetailsPanelTitle, ImGuiWindowFlags_None))
+	{
+		DrawAssetDetails();
+	}
+	ImGui::End();
+
 	bIsFocused = bAnyPanelFocused;
 
 	// 언리얼 Persona처럼 스페이스로 재생 / 일시정지. 패널 중 하나가 포커스일 때만, 글자 입력 중에는 받지 않는다
@@ -204,6 +238,128 @@ void FAnimationEditor::OnRender()
 	{
 		OnClick_Forward();
 	}
+	// 언리얼처럼 Ctrl+S로 이 에셋 저장
+	if (bIsFocused && bDirty && ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_S, false))
+	{
+		SaveAsset();
+	}
+}
+
+void FAnimationEditor::DrawViewModeMenuExtras()
+{
+	UDebugSkelMeshComponent* PreviewComponent = PreviewScene->GetPreviewComponent();
+	if (ImGui::BeginMenu("Root Motion"))
+	{
+		// 에셋이 Root Motion을 안 쓰면 Loop 계열은 고를 수 없다 (UE CanUseProcessRootMotionMode)
+		for (const EProcessRootMotionMode Mode : { EProcessRootMotionMode::Ignore, EProcessRootMotionMode::Loop, EProcessRootMotionMode::LoopAndReset })
+		{
+			if (ImGui::MenuItem(GetProcessRootMotionModeLabel(Mode), nullptr, PreviewComponent->GetProcessRootMotionMode() == Mode,
+				PreviewComponent->CanUseProcessRootMotionMode(Mode)))
+			{
+				PreviewComponent->SetProcessRootMotionMode(Mode);
+			}
+		}
+		if (!PreviewComponent->DoesCurrentAssetHaveRootMotion())
+		{
+			ImGui::TextDisabled("Turn on Enable Root Motion in Asset Details");
+		}
+		ImGui::EndMenu();
+	}
+}
+
+void FAnimationEditor::DrawToolbar()
+{
+	// 창 여백이 0이라 툴바만 안쪽으로 띄운다
+	const ImVec2 Padding = ImGui::GetStyle().FramePadding;
+	ImGui::SetCursorPos(ImVec2(ImGui::GetCursorPosX() + Padding.x, ImGui::GetCursorPosY() + Padding.y));
+
+	// 바꾸면 메모리의 에셋에는 바로 적용되고, 파일에는 Save(또는 Ctrl+S)를 눌러야 쓴다
+	ImGui::BeginDisabled(!bDirty);
+	if (ImGui::Button("Save"))
+	{
+		SaveAsset();
+	}
+	ImGui::EndDisabled();
+	if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+	{
+		ImGui::SetTooltip(bDirty ? "Save changes to the animation file (Ctrl+S)." : "No unsaved changes.");
+	}
+	if (!SaveError.empty())
+	{
+		ImGui::SameLine();
+		ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "Save failed: %s", SaveError.c_str());
+	}
+	else if (bDirty)
+	{
+		ImGui::SameLine();
+		ImGui::TextDisabled("Unsaved changes");
+	}
+	ImGui::SetCursorPosY(ImGui::GetCursorPosY() + Padding.y);
+}
+
+void FAnimationEditor::DrawAssetDetails()
+{
+	// 언리얼 에셋 디테일 > Root Motion
+	if (ImGui::CollapsingHeader("Root Motion", ImGuiTreeNodeFlags_DefaultOpen))
+	{
+		bool bChanged = false;
+		bChanged |= ImGui::Checkbox("Enable Root Motion", &Sequence->bEnableRootMotion);
+		if (ImGui::IsItemHovered())
+		{
+			ImGui::SetTooltip("Extract the root bone motion and move the actor by it.");
+		}
+
+		constexpr const char* RootLockLabels[] = { "Ref Pose", "Anim First Frame", "Zero" };
+		int RootLock = static_cast<int>(Sequence->RootMotionRootLock);
+		ImGui::TextUnformatted("Root Motion Root Lock");
+		ImGui::SetNextItemWidth(-FLT_MIN);
+		if (ImGui::Combo("##RootMotionRootLock", &RootLock, RootLockLabels, IM_ARRAYSIZE(RootLockLabels)))
+		{
+			Sequence->RootMotionRootLock = static_cast<ERootMotionRootLock::Type>(RootLock);
+			bChanged = true;
+		}
+		if (ImGui::IsItemHovered())
+		{
+			ImGui::SetTooltip("Root Motion Root Lock: where the root bone is held after its motion is extracted.");
+		}
+
+		bChanged |= ImGui::Checkbox("Force Root Lock", &Sequence->bForceRootLock);
+		if (ImGui::IsItemHovered())
+		{
+			ImGui::SetTooltip("Hold the root bone even when Root Motion is off. The motion is discarded.");
+		}
+
+		if (bChanged)
+		{
+			bDirty = true;
+		}
+	}
+}
+
+bool FAnimationEditor::SaveAsset()
+{
+	// 키(Assets 기준 경로)로 파일을 찾아 읽고, Root Motion 필드만 바꿔 다시 쓴다
+	FString FilePath;
+	FFbxAssetData Data;
+	SaveError.clear();
+	if (!FbxPath::ResolveKey(Sequence->GetPath(), FilePath, SaveError) || !FFbxAssetBake::ReadBaked(FilePath, Data, SaveError))
+	{
+		return false;
+	}
+	if (Data.Type != EFbxAssetType::AnimSequence)
+	{
+		SaveError = "Not an animation file: " + FilePath;
+		return false;
+	}
+	Data.Animation.bEnableRootMotion = Sequence->bEnableRootMotion;
+	Data.Animation.RootMotionRootLock = static_cast<int32>(Sequence->RootMotionRootLock);
+	Data.Animation.bForceRootLock = Sequence->bForceRootLock;
+	if (!FFbxAssetBake::WriteBaked(FilePath, Data, SaveError))
+	{
+		return false;
+	}
+	bDirty = false;
+	return true;
 }
 
 void FAnimationEditor::DrawTimeline()

@@ -32,6 +32,14 @@ private:
 	void DrawPlaybackSpeedMenu();
 	// 뷰포트 왼쪽 위에 프레임 레이트
 	FString GetDisplayInfo() const override;
+	// 보기 콤보의 Root Motion 하위 메뉴. 언리얼 Character > Animation > Process Root Motion. 미리보기 전용이라 저장하지 않는다
+	void DrawViewModeMenuExtras() override;
+	// 패널들 위 툴바. 언리얼 에셋 에디터 툴바처럼 Save 버튼을 둔다
+	void DrawToolbar();
+	// 언리얼 애니메이션 에디터의 Asset Details. 지금은 Root Motion 항목만
+	void DrawAssetDetails();
+	// 저장하지 않은 설정을 이 클립의 .fbxbin에 다시 쓴다. 실패하면 이유를 SaveError에 남긴다 (UE 에셋 저장)
+	bool SaveAsset();
 
 	// 언리얼 SAnimTimelineTransportControls의 버튼 동작. 녹화(OnClick_Record)는 넣지 않는다
 	void OnClick_Backward_End();
@@ -45,11 +53,15 @@ private:
 	void HandleScrubPositionChanged(float NewTime);
 
 	UAnimSequence* Sequence = nullptr; // 소유는 UAssetManager
-	FString WindowTitle;               // 파일 이름###에셋 키. 에셋별로 창 위치가 저장된다
+	FString WindowTitle;               // 파일 이름###에셋 키. 에셋별로 창 위치가 저장된다. 저장 안 했으면 앞에 * (### 뒤 ID는 그대로)
+	// 에셋 설정을 바꿨지만 아직 파일에 쓰지 않았다. 메모리의 에셋에는 바로 적용된다 (UE 에셋의 dirty 표시)
+	bool bDirty = false;
 	// 패널 창 제목(이름###에셋 키). 에셋별로 패널 배치가 저장된다
 	FString TreePanelTitle;
 	FString ViewportPanelTitle;
 	FString TimelinePanelTitle;
+	FString DetailsPanelTitle;
+	FString SaveError; // 마지막 저장 실패 이유. 성공하면 비운다
 
 	// 재생 버튼 아이콘. 소유는 UAssetManager. 파일이 없으면 글자 버튼
 	UTexture2D* ToFrontIcon = nullptr;

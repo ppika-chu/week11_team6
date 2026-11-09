@@ -343,8 +343,13 @@ void FPersonaAssetEditor::DrawBones(FLineBatcher& LineBatcher) const
 		return;
 	}
 
-	// 프리뷰 메시는 월드 원점에 있으므로 Component 공간 = 월드 공간
-	const FVector ComponentOrigin(0.0f, 0.0f, 0.0f);
+	// Root Motion 미리보기로 프리뷰 메시가 원점을 떠날 수 있어 컴포넌트 공간을 월드로 바꿔 그린다
+	const FMatrix ComponentToWorld = PreviewScene->GetPreviewComponent()->GetWorldMatrix();
+	const auto GetBoneWorldLocation = [&](int32 BoneIndex)
+	{
+		return ComponentToWorld.TransformPosition(GetBoneLocation(BoneIndex));
+	};
+	const FVector ComponentOrigin = ComponentToWorld.TransformPosition(FVector(0.0f, 0.0f, 0.0f));
 
 	for (int32 BoneIndex = 0; BoneIndex < Mesh->RefSkeleton.GetNum(); ++BoneIndex)
 	{
@@ -358,17 +363,17 @@ void FPersonaAssetEditor::DrawBones(FLineBatcher& LineBatcher) const
 		const FVector4& BoneColor = bIsSelected ? SelectedBoneColor : (bIsAffected ? AffectedBoneColor : DefaultBoneColor);
 
 		// 구는 본 축 방향으로 (스케일은 뺀다)
-		const FMatrix& M = GetComponentSpaceTransforms()[BoneIndex];
+		const FMatrix M = GetComponentSpaceTransforms()[BoneIndex] * ComponentToWorld;
 		const FVector AxisX = FVector(M.M[0][0], M.M[0][1], M.M[0][2]).Normalized();
 		const FVector AxisY = FVector(M.M[1][0], M.M[1][1], M.M[1][2]).Normalized();
 		const FVector AxisZ = FVector(M.M[2][0], M.M[2][1], M.M[2][2]).Normalized();
-		const FVector BoneLocation = GetBoneLocation(BoneIndex);
+		const FVector BoneLocation = GetBoneWorldLocation(BoneIndex);
 		AddWireSphere(LineBatcher, BoneLocation, AxisX, AxisY, AxisZ, BoneDrawSize, BoneColor);
 
 		// 자식으로 가는 뿔. 양 끝을 구 반지름만큼 줄여 구와 겹치지 않게 한다
 		for (const int32 ChildIndex : BoneChildren[BoneIndex])
 		{
-			const FVector ChildLocation = GetBoneLocation(ChildIndex);
+			const FVector ChildLocation = GetBoneWorldLocation(ChildIndex);
 			const FVector Delta = ChildLocation - BoneLocation;
 			if (Delta.Size() <= BoneDrawSize * 2.0f)
 			{
@@ -391,7 +396,7 @@ void FPersonaAssetEditor::DrawBones(FLineBatcher& LineBatcher) const
 		const int32 ParentIndex = Mesh->RefSkeleton.RefBoneInfo[SelectedBoneIndex].ParentIndex;
 		if (ParentIndex >= 0)
 		{
-			AddConeConnection(LineBatcher, GetBoneLocation(ParentIndex), GetBoneLocation(SelectedBoneIndex), BoneDrawSize, ParentOfSelectedBoneColor);
+			AddConeConnection(LineBatcher, GetBoneWorldLocation(ParentIndex), GetBoneWorldLocation(SelectedBoneIndex), BoneDrawSize, ParentOfSelectedBoneColor);
 		}
 	}
 }
@@ -461,6 +466,8 @@ void FPersonaAssetEditor::DrawViewport()
 			}
 			ImGui::EndMenu();
 		}
+		// 파생 에디터 전용 하위 메뉴 (애니메이션 에디터의 Root Motion)
+		DrawViewModeMenuExtras();
 		ImGui::EndCombo();
 	}
 
