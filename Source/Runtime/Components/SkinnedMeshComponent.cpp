@@ -13,6 +13,18 @@ void USkinnedMeshComponent::BeginPlay()
 	EnsurePoseInitialized();
 }
 
+void USkinnedMeshComponent::Serialize(FStructuredArchive::FRecord Record)
+{
+	Super::Serialize(Record);
+
+	// 씬을 불러올 때는 등록(OnRegister)이 먼저라 생성자 기본 메시로 렌더 데이터가 만들어진 뒤
+	// 리플렉션이 SkeletalMesh 포인터만 바꾼다. 머티리얼은 새 메시, 정점은 옛 메시가 되므로 여기서 다시 만든다.
+	if (Record.GetUnderlyingArchive().IsLoading())
+	{
+		EnsurePoseInitialized();
+	}
+}
+
 void USkinnedMeshComponent::SetSkeletalMesh(USkeletalMesh* InSkeletalMesh)
 {
 	if (SkeletalMesh == InSkeletalMesh)

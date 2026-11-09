@@ -17,6 +17,7 @@ class USkinnedMeshComponent : public UMeshComponent
 	REFLECT_END()
 public:
 	virtual void BeginPlay() override;
+	virtual void Serialize(FStructuredArchive::FRecord Record) override;
 
 	// 메시가 바뀌면 슬롯 구성이 달라지므로 덮어쓰기를 비운다
 	void SetSkeletalMesh(USkeletalMesh* InSkeletalMesh);
