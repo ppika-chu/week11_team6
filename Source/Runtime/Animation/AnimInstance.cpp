@@ -4,6 +4,8 @@
 #include "BlendSpace.h"
 #include "AnimSequence.h"
 #include "AnimationRuntime.h"
+#include "AnimNotifies/AnimNotify.h"
+#include <utility>
 #include "Components/SkeletalMeshComponent.h"
 
 void UAnimInstance::InitializeAnimation()
@@ -36,6 +38,7 @@ void UAnimInstance::UpdateAnimation(float DeltaSeconds)
 	ClearQueuedAnimEvents();
 	DeltaTime = DeltaSeconds;
 	NativeUpdateAnimation(DeltaSeconds);
+	bNeedsQueuedAnimEventsDispatched = true;
 	if (RootNode)
 	{
 		RootNode->Update(DeltaSeconds);
@@ -117,4 +120,56 @@ void UAnimInstance::ClearQueuedAnimEvents()
 	NotifyQueue.Reset();
 	bNeedsQueuedAnimEventsDispatched = false;
 	++NotifyDispatchSerial;
+}
+
+void UAnimInstance::DispatchQueuedAnimEvents()
+{
+	if (bNeedsQueuedAnimEventsDispatched)
+	{
+		bNeedsQueuedAnimEventsDispatched = false;
+		TriggerAnimNotifies(DeltaTime);
+	}
+}
+
+void UAnimInstance::TriggerAnimNotifies(float DeltaSeconds)
+{
+	++NotifyDispatchSerial;
+	TArray<FAnimNotifyEventReference> QueuedNotifies = std::move(NotifyQueue.AnimNotifies);
+	const uint64 DispatchSerial = NotifyDispatchSerial;
+	for (const FAnimNotifyEventReference& EventReference : QueuedNotifies)
+	{
+		const FAnimNotifyEvent* Event = EventReference.GetNotify();
+		if (Event && !Event->NotifyStateClass)
+		{
+			TriggerSingleAnimNotify(EventReference);
+			// Callback은 모드·클립을 바꾸거나 Component를 해제할 수 있다.
+			if (FindLiveObjectByAddress(this) != this || NotifyDispatchSerial != DispatchSerial)
+			{
+				return;
+			}
+		}
+	}
+}
+
+void UAnimInstance::TriggerSingleAnimNotify(const FAnimNotifyEventReference& EventReference)
+{
+	const FAnimNotifyEvent* Event = EventReference.GetNotify();
+	if (!Event)
+	{
+		return;
+	}
+	const uint64 DispatchSerial = NotifyDispatchSerial;
+	if (HandleNotify(*Event))
+	{
+		return;
+	}
+	if (FindLiveObjectByAddress(this) != this || NotifyDispatchSerial != DispatchSerial)
+	{
+		return;
+	}
+	if (Event->Notify)
+	{
+		Event->Notify->Notify(GetSkelMeshComponent(), Cast<UAnimSequenceBase>(const_cast<UObject*>(EventReference.GetSourceObject())), EventReference);
+	}
+	// TODO: AnimNotify_ 이름 함수 호출 연결 예정. 현재 이름 이벤트는 HandleNotify에서 처리한다.
 }

@@ -42,11 +42,6 @@ void UAnimSequenceBase::GetAnimNotifies(float StartTime, float DeltaTime, FAnimN
 
 void UAnimSequenceBase::GetAnimNotifiesFromDeltaPositions(float PreviousPosition, float CurrentPosition, FAnimNotifyContext& NotifyContext) const
 {
-	if (!std::isfinite(PreviousPosition) || !std::isfinite(CurrentPosition))
-	{
-		return;
-	}
-
 	const bool bPlayingBackwards = CurrentPosition < PreviousPosition;
 	for (const FAnimNotifyEvent& Event : Notifies)
 	{

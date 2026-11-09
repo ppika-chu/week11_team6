@@ -76,13 +76,8 @@ ETypeAdvanceAnim FAnimationRuntime::AdvanceTime(bool bAllowLooping, float MoveDe
 
 void FAnimationRuntime::BlendTwoPosesTogetherInPlace(FAnimPose& InOutPoseOne, const FAnimPose& SourcePoseTwo, float WeightOfPoseOne)
 {
-	const bool bValid = InOutPoseOne.LocalTransforms.Num() == SourcePoseTwo.LocalTransforms.Num()
-		&& std::isfinite(WeightOfPoseOne) && WeightOfPoseOne >= 0.0f && WeightOfPoseOne <= 1.0f;
-	assert(bValid);
-	if (!bValid)
-	{
-		return;
-	}
+	assert(InOutPoseOne.LocalTransforms.Num() == SourcePoseTwo.LocalTransforms.Num());
+	assert(WeightOfPoseOne >= 0.0f && WeightOfPoseOne <= 1.0f);
 
 	for (int32 BoneIndex = 0; BoneIndex < InOutPoseOne.LocalTransforms.Num(); ++BoneIndex)
 	{
@@ -96,33 +91,8 @@ void FAnimationRuntime::BlendTwoPosesTogetherInPlace(FAnimPose& InOutPoseOne, co
 
 void FAnimationRuntime::BlendPosesTogether(const TArray<FAnimPose>& SourcePoses, const TArray<float>& SourceWeights, FAnimPose& OutPose)
 {
-	const bool bValidCount = !SourcePoses.IsEmpty() && SourcePoses.Num() == SourceWeights.Num();
-	assert(bValidCount);
-	if (!bValidCount)
-	{
-		return;
-	}
-
+	assert(!SourcePoses.IsEmpty() && SourcePoses.Num() == SourceWeights.Num());
 	const int32 BoneCount = SourcePoses[0].LocalTransforms.Num();
-	float TotalWeight = 0.0f;
-	for (int32 PoseIndex = 0; PoseIndex < SourcePoses.Num(); ++PoseIndex)
-	{
-		const float Weight = SourceWeights[PoseIndex];
-		const bool bValid = SourcePoses[PoseIndex].LocalTransforms.Num() == BoneCount
-			&& std::isfinite(Weight) && Weight >= 0.0f && Weight <= 1.0f;
-		assert(bValid);
-		if (!bValid)
-		{
-			return;
-		}
-		TotalWeight += Weight;
-	}
-	const bool bNormalizedWeights = std::abs(TotalWeight - 1.0f) <= KINDA_SMALL_NUMBER;
-	assert(bNormalizedWeights);
-	if (!bNormalizedWeights)
-	{
-		return;
-	}
 
 	FAnimPose Result;
 	Result.LocalTransforms.SetNum(BoneCount);

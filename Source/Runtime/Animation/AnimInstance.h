@@ -34,7 +34,12 @@ public:
 	// TODO: Graph의 최종 Weight 전달 연결 예정. 단독 재생의 Weight는 1이다.
 	void SequenceAdvanceImmediate(UAnimSequenceBase* Sequence, bool bLooping, float PlayRate, float DeltaSeconds, float& CurrentTime, float EffectiveBlendWeight = 1.0f);
 
+	// 프레임별 수집 결과 전달 — 일반 재생은 Pose 확정 뒤 한 번 호출한다.
+	void DispatchQueuedAnimEvents();
+	void TriggerAnimNotifies(float DeltaSeconds);
+	void TriggerSingleAnimNotify(const FAnimNotifyEventReference& EventReference);
 	void ClearQueuedAnimEvents();
+	virtual bool HandleNotify(const FAnimNotifyEvent& AnimNotifyEvent) { return false; }
 
 	// 파생 Instance가 초기화·정리할 상태가 있을 때 재정의한다.
 	virtual void NativeInitializeAnimation() {}
