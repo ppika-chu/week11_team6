@@ -2,7 +2,6 @@
 #include "AnimNode_SingleNode.h"
 #include "Animation/AnimSingleNodeInstance.h"
 #include "Animation/AnimSequenceBase.h"
-#include "Animation/AnimationRuntime.h"
 
 void FAnimNode_SingleNode::Update(float DeltaTime)
 {
@@ -11,12 +10,14 @@ void FAnimNode_SingleNode::Update(float DeltaTime)
 	{
 		return;
 	}
-	const float CombinedPlayRate = (Instance->bPlaying ? Instance->PlayRate : 0.0f) * Sequence->RateScale;
-	FAnimationRuntime::AdvanceTime(Instance->bLooping, DeltaTime * CombinedPlayRate, Instance->CurrentTime, Sequence->GetPlayLength());
+	const float NewPlayRate = Instance->bPlaying ? Instance->PlayRate : 0.0f;
+	const float CombinedPlayRate = NewPlayRate * Sequence->RateScale;
+	// 이번 Update의 속도를 정한 뒤 전진 전 시각으로 재생 종료를 판정한다.
 	if (!Instance->bLooping && ((CombinedPlayRate < 0.0f && Instance->CurrentTime <= 0.0f) || (CombinedPlayRate > 0.0f && Instance->CurrentTime >= Instance->GetLength())))
 	{
 		Instance->SetPlaying(false);
 	}
+	Instance->SequenceAdvanceImmediate(Sequence, Instance->bLooping, NewPlayRate, DeltaTime, Instance->CurrentTime);
 }
 
 void FAnimNode_SingleNode::Evaluate(FAnimPose& OutPose)
