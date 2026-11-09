@@ -5,6 +5,7 @@
 #include "AnimSequence.h"
 #include "AnimationRuntime.h"
 #include "AnimNotifies/AnimNotify.h"
+#include "AnimNotifies/AnimNotifyState.h"
 #include <utility>
 #include "Components/SkeletalMeshComponent.h"
 
@@ -22,10 +23,10 @@ void UAnimInstance::InitializeAnimation()
 
 void UAnimInstance::UninitializeAnimation()
 {
-	ClearQueuedAnimEvents();
 	bUninitialized = true;
 	RootNode = nullptr;
 	NativeUninitializeAnimation();
+	EndNotifyStates();
 }
 
 void UAnimInstance::UpdateAnimation(float DeltaSeconds)
@@ -136,9 +137,16 @@ void UAnimInstance::TriggerAnimNotifies(float DeltaSeconds)
 	++NotifyDispatchSerial;
 	TArray<FAnimNotifyEventReference> QueuedNotifies = std::move(NotifyQueue.AnimNotifies);
 	const uint64 DispatchSerial = NotifyDispatchSerial;
+	TArray<FAnimNotifyEvent> NewActiveAnimNotifyState;
+	TArray<FAnimNotifyEventReference> NewActiveAnimNotifyEventReference;
 	for (const FAnimNotifyEventReference& EventReference : QueuedNotifies)
 	{
 		const FAnimNotifyEvent* Event = EventReference.GetNotify();
+		if (Event && Event->NotifyStateClass && NewActiveAnimNotifyState.Find(*Event) == -1)
+		{
+			NewActiveAnimNotifyState.Add(*Event);
+			NewActiveAnimNotifyEventReference.Add(EventReference);
+		}
 		if (Event && !Event->NotifyStateClass)
 		{
 			TriggerSingleAnimNotify(EventReference);
@@ -148,6 +156,36 @@ void UAnimInstance::TriggerAnimNotifies(float DeltaSeconds)
 				return;
 			}
 		}
+	}
+
+	for (int32 Index = 0; Index < ActiveAnimNotifyState.Num(); ++Index)
+	{
+		const FAnimNotifyEvent& Event = ActiveAnimNotifyState[Index];
+		if (NewActiveAnimNotifyState.Find(Event) == -1)
+		{
+			FAnimNotifyEventReference Reference = ActiveAnimNotifyEventReference[Index];
+			Reference.SetNotify(&Event);
+			Event.NotifyStateClass->NotifyEnd(GetSkelMeshComponent(), Cast<UAnimSequenceBase>(const_cast<UObject*>(Reference.GetSourceObject())), Reference);
+		}
+	}
+	for (int32 Index = 0; Index < NewActiveAnimNotifyState.Num(); ++Index)
+	{
+		const FAnimNotifyEvent& Event = NewActiveAnimNotifyState[Index];
+		if (ActiveAnimNotifyState.Find(Event) == -1)
+		{
+			FAnimNotifyEventReference Reference = NewActiveAnimNotifyEventReference[Index];
+			Reference.SetNotify(&Event);
+			Event.NotifyStateClass->NotifyBegin(GetSkelMeshComponent(), Cast<UAnimSequenceBase>(const_cast<UObject*>(Reference.GetSourceObject())), Event.GetDuration(), Reference);
+		}
+	}
+	ActiveAnimNotifyState = std::move(NewActiveAnimNotifyState);
+	ActiveAnimNotifyEventReference = std::move(NewActiveAnimNotifyEventReference);
+	for (int32 Index = 0; Index < ActiveAnimNotifyState.Num(); ++Index)
+	{
+		const FAnimNotifyEvent& Event = ActiveAnimNotifyState[Index];
+		FAnimNotifyEventReference Reference = ActiveAnimNotifyEventReference[Index];
+		Reference.SetNotify(&Event);
+		Event.NotifyStateClass->NotifyTick(GetSkelMeshComponent(), Cast<UAnimSequenceBase>(const_cast<UObject*>(Reference.GetSourceObject())), DeltaSeconds, Reference);
 	}
 }
 
@@ -172,4 +210,17 @@ void UAnimInstance::TriggerSingleAnimNotify(const FAnimNotifyEventReference& Eve
 		Event->Notify->Notify(GetSkelMeshComponent(), Cast<UAnimSequenceBase>(const_cast<UObject*>(EventReference.GetSourceObject())), EventReference);
 	}
 	// TODO: AnimNotify_ 이름 함수 호출 연결 예정. 현재 이름 이벤트는 HandleNotify에서 처리한다.
+}
+
+void UAnimInstance::EndNotifyStates()
+{
+	ClearQueuedAnimEvents();
+	TArray<FAnimNotifyEvent> EndedStates = std::move(ActiveAnimNotifyState);
+	TArray<FAnimNotifyEventReference> EndedReferences = std::move(ActiveAnimNotifyEventReference);
+	for (int32 Index = 0; Index < EndedStates.Num(); ++Index)
+	{
+		FAnimNotifyEventReference Reference = EndedReferences[Index];
+		Reference.SetNotify(&EndedStates[Index]);
+		EndedStates[Index].NotifyStateClass->NotifyEnd(GetSkelMeshComponent(), Cast<UAnimSequenceBase>(const_cast<UObject*>(Reference.GetSourceObject())), Reference);
+	}
 }

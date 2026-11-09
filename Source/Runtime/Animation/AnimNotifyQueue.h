@@ -5,7 +5,8 @@
 
 class UObject;
 
-// 이벤트 배열과 출처 Asset은 수집부터 전달 완료까지 유효하며 변경되지 않아야 한다.
+// 이벤트 배열은 수집부터 전달 완료까지 변경되지 않아야 한다.
+// 출처 Asset과 Notify 객체는 활성 State의 End까지 유효해야 한다.
 struct FAnimNotifyEventReference
 {
 	FAnimNotifyEventReference() = default;

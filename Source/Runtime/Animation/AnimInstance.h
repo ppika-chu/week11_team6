@@ -41,6 +41,9 @@ public:
 	void ClearQueuedAnimEvents();
 	virtual bool HandleNotify(const FAnimNotifyEvent& AnimNotifyEvent) { return false; }
 
+	// 활성 State 종료 — 클립·모드 교체와 Instance 정리에서 호출한다.
+	void EndNotifyStates();
+
 	// 파생 Instance가 초기화·정리할 상태가 있을 때 재정의한다.
 	virtual void NativeInitializeAnimation() {}
 	virtual void NativeUninitializeAnimation() {}
@@ -48,6 +51,9 @@ public:
 
 protected:
 	FAnimNotifyQueue NotifyQueue;
+	// 다음 프레임의 End 비교에 쓸 이벤트 값과 출처 정보. NotifyState 객체는 Asset이 보관한다.
+	TArray<FAnimNotifyEvent> ActiveAnimNotifyState;
+	TArray<FAnimNotifyEventReference> ActiveAnimNotifyEventReference;
 
 	// 파생 AnimInstance가 Graph의 Node들을 보관하고 실행 시작점의 주소를 반환한다.
 	// Graph가 없는 기본 Instance는 Reference Pose를 사용한다.

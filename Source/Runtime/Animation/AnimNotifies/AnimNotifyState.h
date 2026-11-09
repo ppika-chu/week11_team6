@@ -7,6 +7,7 @@ class USkeletalMeshComponent;
 class UAnimSequenceBase;
 struct FAnimNotifyEventReference;
 
+// 콜백에서는 게임 상태를 갱신한다. 실행 중인 애니메이션의 교체·Seek·해제는 콜백이 끝난 뒤 처리한다.
 class UAnimNotifyState : public UObject
 {
 	DECLARE_CLASS(UAnimNotifyState, UObject)
