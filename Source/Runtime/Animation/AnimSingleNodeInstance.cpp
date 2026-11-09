@@ -7,6 +7,7 @@
 
 void UAnimSingleNodeInstance::SetAnimationAsset(UAnimationAsset* NewAsset, bool bInIsLooping, float InPlayRate)
 {
+	ClearQueuedAnimEvents();
 	USkeletalMeshComponent* Component = GetSkelMeshComponent();
 	USkeletalMesh* Mesh = Component ? Component->GetSkeletalMesh() : nullptr;
 	// 전체 Bone 배열을 직접 사용하므로 같은 Skeleton의 Sequence만 지원한다.

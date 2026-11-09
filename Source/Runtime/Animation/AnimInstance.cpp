@@ -20,6 +20,7 @@ void UAnimInstance::InitializeAnimation()
 
 void UAnimInstance::UninitializeAnimation()
 {
+	ClearQueuedAnimEvents();
 	bUninitialized = true;
 	RootNode = nullptr;
 	NativeUninitializeAnimation();
@@ -32,6 +33,8 @@ void UAnimInstance::UpdateAnimation(float DeltaSeconds)
 		return;
 	}
 
+	ClearQueuedAnimEvents();
+	DeltaTime = DeltaSeconds;
 	NativeUpdateAnimation(DeltaSeconds);
 	if (RootNode)
 	{
@@ -61,7 +64,7 @@ USkeletalMeshComponent* UAnimInstance::GetSkelMeshComponent() const
 	return Cast<USkeletalMeshComponent>(GetOuter());
 }
 
-void UAnimInstance::BlendSpaceAdvanceImmediate(UBlendSpace* BlendSpace, const FVector& BlendInput, TArray<FBlendSampleData>& BlendSampleDataCache, bool bLooping, float PlayRate, float DeltaSeconds, float& CurrentTime, int32& CachedTriangulationIndex)
+void UAnimInstance::BlendSpaceAdvanceImmediate(UBlendSpace* BlendSpace, const FVector& BlendInput, TArray<FBlendSampleData>& BlendSampleDataCache, bool bLooping, float PlayRate, float DeltaSeconds, float& CurrentTime, int32& CachedTriangulationIndex, float EffectiveBlendWeight)
 {
 	if (!BlendSpace || !BlendSpace->GetSamplesFromBlendInput(BlendInput, BlendSampleDataCache, CachedTriangulationIndex))
 	{
@@ -87,4 +90,31 @@ void UAnimInstance::BlendSpaceAdvanceImmediate(UBlendSpace* BlendSpace, const FV
 		Sample.PreviousTime = PreviousNormalizedTime * SampleLength;
 		Sample.Time = CurrentTime * SampleLength;
 	}
+	// Cache는 Weight 내림차순이다. 동률일 때도 첫 Sample 하나만 선택한다.
+	const FBlendSampleData& HighestWeightSample = BlendSampleDataCache[0];
+	const float NormalizedDelta = bLooping ? DeltaSeconds * PlayRate / BlendedLength : CurrentTime - PreviousNormalizedTime;
+	FAnimNotifyContext Context(bLooping);
+	HighestWeightSample.Animation->GetAnimNotifies(HighestWeightSample.PreviousTime, NormalizedDelta * HighestWeightSample.Animation->GetPlayLength(), Context);
+	NotifyQueue.AddAnimNotifies(Context.ActiveNotifies, EffectiveBlendWeight);
+}
+
+void UAnimInstance::SequenceAdvanceImmediate(UAnimSequenceBase* Sequence, bool bLooping, float PlayRate, float DeltaSeconds, float& CurrentTime, float EffectiveBlendWeight)
+{
+	if (!Sequence)
+	{
+		return;
+	}
+	const float PreviousTime = CurrentTime;
+	const float MoveDelta = DeltaSeconds * PlayRate * Sequence->RateScale;
+	FAnimationRuntime::AdvanceTime(bLooping, MoveDelta, CurrentTime, Sequence->GetPlayLength());
+	FAnimNotifyContext Context(bLooping);
+	Sequence->GetAnimNotifies(PreviousTime, MoveDelta, Context);
+	NotifyQueue.AddAnimNotifies(Context.ActiveNotifies, EffectiveBlendWeight);
+}
+
+void UAnimInstance::ClearQueuedAnimEvents()
+{
+	NotifyQueue.Reset();
+	bNeedsQueuedAnimEventsDispatched = false;
+	++NotifyDispatchSerial;
 }

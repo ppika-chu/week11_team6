@@ -33,7 +33,8 @@ void UAnimSequenceBase::GetAnimNotifies(float StartTime, float DeltaTime, FAnimN
 			break;
 		}
 
-		// 현재 시각의 차이로 Loop 횟수를 복구하지 않고 실제 이동량을 끝까지 소비한다.
+		// CurrentPosition은 경계에서 잘린 시각이므로, 이번 구간에서 실제 이동한 양만 빼야 다음 Loop의 남은 이동량이 된다.
+		// 예: 길이 1초, 0.8에서 +0.5초 이동 → 경계까지 0.2초를 조회했으므로 0.3초가 남는다. 역재생은 음수 이동량을 뺀다.
 		DesiredDeltaMove -= static_cast<double>(CurrentPosition) - PreviousPosition;
 		PreviousPosition = bPlayingBackwards ? PlayLength : 0.0f;
 	}
