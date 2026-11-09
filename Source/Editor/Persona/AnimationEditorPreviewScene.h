@@ -3,9 +3,9 @@
 #include "Render/RenderingInfo.h"
 #include "Render/Texture2D.h"
 
+class UDebugSkelMeshComponent;
 class UWorld;
 class USkeletalMesh;
-class USkeletalMeshComponent;
 class AActor;
 class AStaticMeshActor;
 
@@ -63,7 +63,7 @@ public:
 	float GetCustomAnimationSpeed() const { return CustomAnimationSpeed; }
 
 	UWorld* GetWorld() const { return PreviewWorld; }
-	USkeletalMeshComponent* GetPreviewComponent() const { return PreviewComponent; }
+	UDebugSkelMeshComponent* GetPreviewComponent() const { return PreviewComponent; }
 	const FEditorViewportClient& GetViewportClient() const { return ViewportClient; }
 	FEditorViewportClient& GetViewportClient() { return ViewportClient; }
 	const FRenderingInfo& GetRenderingInfo() const { return RenderingInfo; }
@@ -90,7 +90,7 @@ private:
 	AStaticMeshActor* FloorActor = nullptr; // 소유는 PreviewWorld
 	// 원점에 둔 빈 액터 + 스켈레탈 메시 컴포넌트 (언리얼 AAnimationEditorPreviewActor)
 	AActor* PreviewActor = nullptr;
-	USkeletalMeshComponent* PreviewComponent = nullptr;
+	UDebugSkelMeshComponent* PreviewComponent = nullptr;
 	bool bShowFloor = false;
 	bool bShowMesh = true;
 	EAnimationPlaybackSpeeds::Type AnimationPlaybackSpeedMode = EAnimationPlaybackSpeeds::Normal;

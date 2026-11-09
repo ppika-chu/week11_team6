@@ -16,6 +16,16 @@ enum class EBoneDrawMode : uint8
 	All,
 };
 
+enum class ESkinWeightViewMode : uint8
+{
+	Material, // 기본 스킨 색상
+	Greyscale,
+	Turbo,
+	Jet,
+	Viridis,
+	Inferno,
+};
+
 // 프리뷰 씬을 쓰는 에셋 에디터의 공용 부모. 언리얼에 같은 클래스는 없고,
 // 렌더링과 매니저가 에디터 종류를 몰라도 되게 하려고 둔다.
 class FPersonaAssetEditor
@@ -73,6 +83,8 @@ protected:
 	void DrawSkeletonTree();
 	// 본 하나와 그 자식들을 재귀로 그린다
 	void DrawBoneTreeNode(int32 BoneIndex);
+	// Skin Weight 컬러 램프 동기화
+	void SyncPreviewSkinWeightView();
 
 	// 에셋 키(폴더/이름.fbxbin)에서 폴더와 확장자를 뺀 이름. 창 제목에 보인다
 	static FString GetDisplayName(const FString& AssetKey);
@@ -103,6 +115,8 @@ protected:
 	TArray<uint8> BoneHasWeights;               // bool. TArray가 std::vector라 vector<bool>을 피한다
 	UTexture2D* BoneIcon = nullptr;             // 소유는 UAssetManager
 	UTexture2D* BoneNonWeightedIcon = nullptr;
+
+	ESkinWeightViewMode SkinWeightViewMode = ESkinWeightViewMode::Material;
 
 	bool bIsOpen = true;
 	bool bIsVisible = false;    // 지난 프레임 뷰포트 패널의 Begin 결과

@@ -10,6 +10,7 @@
 #include "Asset/AssetManager.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Editor/HitoriEd/EditorResourcePaths.h"
+#include "Editor/Persona/DebugSkelMeshComponent.h"
 #include "Render/SkeletalMesh.h"
 #include "Render/Texture2D.h"
 #include "ThirdParty/ImNeoSequencer/imgui_neo_sequencer.h"
