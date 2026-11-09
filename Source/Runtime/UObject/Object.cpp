@@ -80,6 +80,16 @@ bool UObject::IsA(const UClass* Class)
 	return ThisClass && ThisClass->IsChildOf(Class);
 }
 
+const FFunction* UObject::FindFunction(const FName& FunctionName) const
+{
+	return GetClass()->FindFunctionByName(FunctionName);
+}
+
+void UObject::ProcessEvent(const FFunction* Function)
+{
+	Function->Invoke(this);
+}
+
 void UObject::Serialize(json& Handle, bool bIsLoading)
 {
 	for (UClass* c = GetClass(); c; c = c->Super)

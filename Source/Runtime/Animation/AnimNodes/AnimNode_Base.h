@@ -11,4 +11,6 @@ struct FAnimNode_Base
 	virtual void Initialize() = 0;
 	virtual void Update(const FAnimationUpdateContext& Context) = 0;
 	virtual void Evaluate(FAnimPose& OutPose) = 0;
+
+	virtual ~FAnimNode_Base() = default;
 };

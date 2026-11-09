@@ -1,6 +1,7 @@
 #include "EnginePCH.h"
 #include "Scripting/LuaVM.h"
 #include "Scripting/CameraManagerBindings.h"
+#include "Scripting/AnimationGraphBindings.h"
 #include "Sequence/SequenceActor.h"
 
 #include "GameFramework/Actor.h"
@@ -901,6 +902,8 @@ bool FLuaVM::Initialize()
 			"[Lua] VM initialization failed: {}",
 			Exception.what());
 
+		ReleaseAnimationGraphCallbacks(AnimationGraphBindings);
+		AnimationGraphBindings.reset();
 		State.reset();
 		return false;
 	}
@@ -916,6 +919,8 @@ void FLuaVM::Shutdown()
 	}
 
 	// sol::state의 소멸자가 내부 lua_State에 lua_close를 호출합니다.
+	ReleaseAnimationGraphCallbacks(AnimationGraphBindings);
+	AnimationGraphBindings.reset();
 	State.reset();
 }
 
@@ -923,6 +928,7 @@ void FLuaVM::UpdateCoroutine(float DeltaTime)
 {
 	if (State)
 	{
+		CollectAnimationGraphReferences(AnimationGraphBindings);
 		FCoroutineScheduler.Update(DeltaTime);
 	}
 }
@@ -959,6 +965,7 @@ void FLuaVM::BindEngineAPI()
 		"PenetrationDepth", &FHitResult::PenetrationDepth);
 	BindLightAPI(*State);
 	BindSkeletalMeshAPI(*State);
+	AnimationGraphBindings = BindAnimationGraphAPI(*State);
 	BindCameraAPI(*State);
 	BindActorAPI(*State);
 	BindSequenceAPI(*State);

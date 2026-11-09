@@ -10,10 +10,8 @@
 
 namespace
 {
-// 헤더나 직렬화 필드를 변경하면 올린다. 구버전은 에디터에서 명시적으로 재임포트한다.
+// 직렬화 필드 변경 시 버전을 올린다. v5 Track 형식에 v6 Notify 편집 데이터를 추가했다.
 constexpr uint32 FbxBakeVersion = 6;
-// 6: 애니메이션 Root Motion 설정 추가. 5는 그 필드만 없으므로 기본값으로 읽는다
-constexpr uint32 FbxBakeMinReadVersion = 5;
 constexpr uint32 MaxElements = 1000000;
 constexpr uint32 MaxImageBytes = 512u * 1024u * 1024u;
 struct FFbxBakeHeader
@@ -30,7 +28,6 @@ public:
 	std::istream* In = nullptr;
 	std::ostream* Out = nullptr;
 	bool bGood = true;
-	uint32 Version = FbxBakeVersion; // 읽을 때는 파일 헤더의 버전
 
 	template<class T> void Pod(T& Value)
 	{
@@ -85,7 +82,7 @@ void Skeleton(FBinary& Ar, FReferenceSkeleton& Ref)
 	}
 }
 
-void Serialize(FBinary& Ar, FFbxAssetData& Data)
+void Serialize(FBinary& Ar, FFbxAssetData& Data, uint32 Version = FbxBakeVersion)
 {
 	Ar.String(Data.SourcePath); Ar.String(Data.SourceObject);
 	uint8 Flags = (Data.Options.bBakeStaticMeshes ? 1 : 0) | (Data.Options.bCombineStaticMeshes ? 2 : 0) |
@@ -153,18 +150,10 @@ void Serialize(FBinary& Ar, FFbxAssetData& Data)
 			Ar.String(Track.Name); Ar.Pod(Track.BoneTreeIndex);
 			Ar.Array(Track.InternalTrackData.PosKeys); Ar.Array(Track.InternalTrackData.RotKeys); Ar.Array(Track.InternalTrackData.ScaleKeys);
 		}
-		if (Ar.Version >= 6)
-		{
-			uint8 RootMotionFlags = (Data.Animation.bEnableRootMotion ? 1 : 0) | (Data.Animation.bForceRootLock ? 2 : 0);
-			Ar.Pod(RootMotionFlags); Ar.Pod(Data.Animation.RootMotionRootLock);
-			if (Ar.In)
-			{
-				Data.Animation.bEnableRootMotion = (RootMotionFlags & 1) != 0;
-				Data.Animation.bForceRootLock = (RootMotionFlags & 2) != 0;
-			}
-			if (Data.Animation.RootMotionRootLock < 0 || Data.Animation.RootMotionRootLock > 2) { Ar.bGood = false; return; }
-		}
+		// v5에는 편집 데이터가 없다. 기존 키 Asset도 재임포트 없이 읽을 수 있다.
+		if (Version >= 6) Ar.String(Data.Animation.NotifyData);
 	}
+
 	else if (Data.Type == EFbxAssetType::Texture2D)
 	{
 		Ar.Pod(Data.Texture.Width); Ar.Pod(Data.Texture.Height); Ar.Pod(Data.Texture.BytesPerPixel);
@@ -278,10 +267,10 @@ bool FFbxAssetBake::ReadBaked(const FString& Path, FFbxAssetData& Out, FString& 
 	if (!In) { Error = "Cannot open FBX binary: " + Path; return false; }
 	FFbxBakeHeader Header, Expected;
 	if (!In.read(reinterpret_cast<char*>(&Header), sizeof(Header)) || std::memcmp(Header.Magic, Expected.Magic, 4) ||
-		Header.Version < FbxBakeMinReadVersion || Header.Version > FbxBakeVersion || Header.Type < 1 || Header.Type > 6)
+		(Header.Version != 5 && Header.Version != FbxBakeVersion) || Header.Type < 1 || Header.Type > 6)
 	{ Error = "Invalid .fbxbin header/version; import the FBX again: " + Path; return false; }
 	FFbxAssetData Data; Data.Type = static_cast<EFbxAssetType>(Header.Type);
-	FBinary Ar; Ar.In = &In; Ar.Version = Header.Version; Serialize(Ar, Data);
+	FBinary Ar; Ar.In = &In; Serialize(Ar, Data, Header.Version);
 	if (!Ar.bGood || In.peek() != std::char_traits<char>::eof()) { Error = "Truncated or trailing FBX binary data: " + Path; return false; }
 	if (!Data.Validate(Error)) return false;
 	Out = std::move(Data);
@@ -309,5 +298,18 @@ bool FFbxAssetBake::WriteBaked(const FString& Path, const FFbxAssetData& Input, 
 	FFbxAssetData Data = Input;
 	FBinary Ar; Ar.Out = &Out; Serialize(Ar, Data); Out.flush();
 	if (!Ar.bGood || !Out) { Error = "Cannot write FBX binary: " + Path; return false; }
+	return true;
+}
+
+
+bool FFbxAssetBake::PreserveAnimationNotifies(const FString& Path, FFbxAssetData& Data, FString& Error)
+{
+	if (Data.Type != EFbxAssetType::AnimSequence || !fs::exists(FbxPath::FromString(Path))) return true;
+	FFbxAssetData Previous;
+	if (!ReadBaked(Path, Previous, Error)) return false;
+	if (Previous.Type == Data.Type && Previous.SourcePath == Data.SourcePath && Previous.SourceObject == Data.SourceObject)
+	{
+		Data.Animation.NotifyData = Previous.Animation.NotifyData;
+	}
 	return true;
 }

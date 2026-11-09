@@ -58,7 +58,6 @@ public:
 	void TriggerAnimNotifies(float DeltaSeconds);
 	void TriggerSingleAnimNotify(const FAnimNotifyEventReference& EventReference);
 	void ClearQueuedAnimEvents();
-	virtual bool HandleNotify(const FAnimNotifyEvent& AnimNotifyEvent) { return false; }
 
 	// 활성 State 종료 — 클립·모드 교체와 Instance 정리에서 호출한다.
 	void EndNotifyStates();

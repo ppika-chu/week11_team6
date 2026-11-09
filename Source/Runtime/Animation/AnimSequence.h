@@ -5,6 +5,14 @@
 class UAnimSequence : public UAnimSequenceBase
 {
 	DECLARE_CLASS(UAnimSequence, UAnimSequenceBase)
+
+	// 리플렉션 프로퍼티는 UAnimSequenceBase::Serialize(json)가 Notify와 함께 .fbxbin의 편집 데이터(NotifyData)에 저장한다
+	REFLECT_START(UAnimSequence)
+		PROPERTY(bEnableRootMotion)
+		PROPERTY_ENUM(RootMotionRootLock, "Ref Pose", "Anim First Frame", "Zero")
+		PROPERTY(bForceRootLock)
+	REFLECT_END()
+
 public:
 	virtual void GetAnimationPose(FAnimPose& OutPose, const FAnimExtractContext& ExtractionContext) const override;
 
@@ -18,7 +26,7 @@ public:
 	// 그 시각 루트 본(0번)의 부모 기준 변환. 트랙이 없으면 기준 자세
 	FTransform ExtractRootTrackTransform(float Time) const;
 
-	// Root Motion 설정. FBX에는 없고 에디터에서 정해 .fbxbin에 저장한다 (UE 에셋 디테일 > Root Motion)
+	// Root Motion 설정. FBX에는 없고 에디터에서 정해 .fbxbin의 편집 데이터에 저장한다 (UE 에셋 디테일 > Root Motion)
 	// UE bUseNormalizedRootMotionScale은 두지 않고 항상 켠 것처럼 크기 변화를 버린다
 	bool bEnableRootMotion = false;
 	ERootMotionRootLock::Type RootMotionRootLock = ERootMotionRootLock::RefPose;

@@ -23,7 +23,7 @@ class USkeletalMeshComponent : public USkinnedMeshComponent
 	// UE는 AnimToPlay~SavedPlayRate를 FSingleAnimationPlayData AnimationData로 묶는다.
 	// PROPERTY가 구조체 안 멤버를 Details에 펼치지 못해 같은 이름으로 컴포넌트에 둔다.
 	REFLECT_START(USkeletalMeshComponent)
-		PROPERTY_ENUM(AnimationMode, "Use Animation Blueprint", "Use Animation Asset")
+		PROPERTY_ENUM(AnimationMode, "Use Animation Class", "Use Animation Asset")
 		PROPERTY(AnimToPlay)
 		PROPERTY(bSavedLooping)
 		PROPERTY(bSavedPlaying)

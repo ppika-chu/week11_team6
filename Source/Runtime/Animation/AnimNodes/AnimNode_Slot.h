@@ -3,6 +3,8 @@
 #include "AnimNode_Base.h"
 #include "Animation/AnimPose.h"
 #include "Animation/AnimationRuntime.h"
+#include "Animation/AnimInstance.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Core/NameTypes.h"
 #include "Math/EngineMath.h"
 
@@ -25,7 +27,13 @@ public:
 	{
 		if (InputNode)
 		{
-			InputNode->Update(Context);
+			// Update 시점에도 대상 메시의 본 수로 입력을 검증한다.
+			// Evaluate에서 기본 포즈로 대체될 입력 때문에 기본 Notify 가중치가 줄어들면 안 된다.
+			const USkeletalMeshComponent* Component = Context.AnimInstance ? Context.AnimInstance->GetSkelMeshComponent() : nullptr;
+			const USkeletalMesh* Mesh = Component ? Component->GetSkeletalMesh() : nullptr;
+			const float EffectiveWeight = Mesh ? GetEffectiveMontageWeight(Mesh->RefSkeleton.GetNum()) : 0.0f;
+			// 가중치가 0이어도 기본 그래프의 재생 시간은 계속 진행한다.
+			InputNode->Update(Context.FractionalWeight(1.0f - EffectiveWeight));
 		}
 	}
 	void Evaluate(FAnimPose& OutPose)
@@ -38,17 +46,13 @@ public:
 
 		InputNode->Evaluate(OutPose);
 
-		if (MontageWeight <= 0.0f)
+		const float EffectiveWeight = GetEffectiveMontageWeight(OutPose.LocalTransforms.Num());
+		if (EffectiveWeight <= 0.0f)
 		{
 			return;
 		}
 
-		if (SlotPose.LocalTransforms.Num() != OutPose.LocalTransforms.Num())
-		{
-			return;
-		}
-
-		BlendLocalPoseInPlace(OutPose, SlotPose, MontageWeight);
+		BlendLocalPoseInPlace(OutPose, SlotPose, EffectiveWeight);
 	}
 
 	void BlendLocalPoseInPlace(FAnimPose& OutPose, const FAnimPose& InPose, float Weight)
@@ -61,12 +65,18 @@ public:
 	const FName& GetSlotName() const { return SlotName; }
 	void SetInputNode(FAnimNode_Base* InInputNode) { InputNode = InInputNode; }
 	FAnimNode_Base* GetInputNode() const { return InputNode; }
+	// 외부 재생기는 Graph Update 전에 같은 메시의 본 순서를 따르는 포즈와 가중치를 함께 공급한다.
 	void SetSlotPose(const FAnimPose& InSlotPose) { SlotPose = InSlotPose; }
 	const FAnimPose& GetSlotPose() const { return SlotPose; }
 	void SetMontageWeight(float InWeight) { MontageWeight = FMath::Clamp(InWeight, 0.0f, 1.0f); }
 	float GetMontageWeight() const { return MontageWeight; }
 
 private:
+	float GetEffectiveMontageWeight(int32 BoneCount) const
+	{
+		return BoneCount > 0 && SlotPose.LocalTransforms.Num() == BoneCount ? MontageWeight : 0.0f;
+	}
+
 	FName SlotName = NAME_None; // 재생할 Montage를 가진 Slot 이름
 	FAnimNode_Base* InputNode = nullptr; // 기본 포즈를 제공하는 입력 노드
 	FAnimPose SlotPose;                  // 외부에서 제공하는 Montage 혼합 입력 포즈

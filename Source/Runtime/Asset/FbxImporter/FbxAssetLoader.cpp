@@ -87,9 +87,8 @@ public:
 			Sequence->DataModel->FrameRate = Asset.Animation.FrameRate;
 			Sequence->DataModel->NumberOfFrames = Asset.Animation.NumberOfFrames;
 			Sequence->DataModel->NumberOfKeys = Asset.Animation.NumberOfKeys;
-			Sequence->bEnableRootMotion = Asset.Animation.bEnableRootMotion;
-			Sequence->RootMotionRootLock = static_cast<ERootMotionRootLock::Type>(Asset.Animation.RootMotionRootLock);
-			Sequence->bForceRootLock = Asset.Animation.bForceRootLock;
+			json NotifyData = json::parse(Asset.Animation.NotifyData);
+			Sequence->Serialize(NotifyData, true);
 		}
 		else if (Asset.Type == EFbxAssetType::Material)
 		{
@@ -290,18 +289,7 @@ FFbxImportResult FFbxAssetLoader::Import(const FString& SourcePath, const FFbxIm
 		{
 			fs::path Target;
 			if (!FbxPath::ResolveKey(Data.Key, Target, Result.Error)) return Result;
-			// 다시 임포트해도 에디터에서 정한 Root Motion 설정은 남긴다 (UE도 재임포트에서 에셋 설정을 유지한다)
-			if (Data.Type == EFbxAssetType::AnimSequence && fs::exists(Target))
-			{
-				FFbxAssetData Previous;
-				FString IgnoredError;
-				if (FFbxAssetBake::ReadBaked(FbxPath::ToString(Target), Previous, IgnoredError) && Previous.Type == EFbxAssetType::AnimSequence)
-				{
-					Data.Animation.bEnableRootMotion = Previous.Animation.bEnableRootMotion;
-					Data.Animation.RootMotionRootLock = Previous.Animation.RootMotionRootLock;
-					Data.Animation.bForceRootLock = Previous.Animation.bForceRootLock;
-				}
-			}
+			if (!FFbxAssetBake::PreserveAnimationNotifies(FbxPath::ToString(Target), Data, Result.Error)) return Result;
 			FReplacement File{ Target, Folder.Path / (std::to_string(Files.size()) + ".new"), Folder.Path / (std::to_string(Files.size()) + ".old") };
 			if (!FFbxAssetBake::WriteBaked(FbxPath::ToString(File.Staged), Data, Result.Error)) return Result;
 			FFbxAssetData Verified;
@@ -343,4 +331,40 @@ FFbxImportResult FFbxAssetLoader::Import(const FString& SourcePath, const FFbxIm
 	}
 	catch (const std::exception& E) { Result.Error = E.what(); }
 	return Result;
+}
+
+
+bool FFbxAssetLoader::SaveAnimationAsset(UAnimSequenceBase* Sequence, FString& Error)
+{
+	fs::path Temporary;
+	try
+	{
+		if (!Sequence || Sequence->GetPath().empty() || Sequence->IsRetired()) { Error = "Animation Asset has no path or is retired"; return false; }
+		fs::path Target;
+		if (!FbxPath::ResolveKey(Sequence->GetPath(), Target, Error)) return false;
+		FFbxAssetData Data;
+		if (!FFbxAssetBake::ReadBaked(FbxPath::ToString(Target), Data, Error)) return false;
+		if (Data.Type != EFbxAssetType::AnimSequence) { Error = "Asset is not an Animation Sequence"; return false; }
+		json NotifyData = json::object();
+		Sequence->Serialize(NotifyData, false);
+		Data.Animation.NotifyData = NotifyData.dump();
+		Temporary = Target; Temporary += ".notify-save.tmp";
+		if (!FFbxAssetBake::WriteBaked(FbxPath::ToString(Temporary), Data, Error))
+		{
+			std::error_code Ignored; fs::remove(Temporary, Ignored); return false;
+		}
+		// 임시 파일을 완성한 뒤 교체하여 저장 실패로 원래 Asset을 잘라 쓰지 않는다.
+		if (!MoveFileExW(Temporary.c_str(), Target.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+		{
+			Error = "Cannot replace Animation Asset: " + std::to_string(GetLastError());
+			std::error_code Ignored; fs::remove(Temporary, Ignored); return false;
+		}
+		return true;
+	}
+	catch (const std::exception& E)
+	{
+		Error = E.what();
+		if (!Temporary.empty()) { std::error_code Ignored; fs::remove(Temporary, Ignored); }
+		return false;
+	}
 }

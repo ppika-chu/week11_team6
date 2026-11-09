@@ -1,4 +1,4 @@
-#include "EnginePCH.h"
+﻿#include "EnginePCH.h"
 #include "Editor/Details/DetailsPanel.h"
 
 #include "imgui_internal.h"
@@ -1242,7 +1242,7 @@ void DrawMaterialSlots(UMeshComponent* MeshComponent)
 }
 
 // UClass에 등록된 프로퍼티를 타입에 맞는 위젯으로 그린다
-void DrawProperty(UObject* Object, const FProperty& Property, ImFont* CustomFont)
+bool DrawProperty(UObject* Object, const FProperty& Property, ImFont* CustomFont)
 {
 	void* ValuePtr = reinterpret_cast<char*>(Object) + Property.Offset;
 	const FString Label = "##" + Property.Name;
@@ -1298,6 +1298,7 @@ void DrawProperty(UObject* Object, const FProperty& Property, ImFont* CustomFont
 			Value->Roll = Euler[0];
 			Value->Pitch = Euler[1];
 			Value->Yaw = Euler[2];
+			bChanged = true;
 		}
 		break;
 	}
@@ -1342,6 +1343,7 @@ void DrawProperty(UObject* Object, const FProperty& Property, ImFont* CustomFont
 		if (ImGui::InputText(Label.c_str(), Buffer, sizeof(Buffer)))
 		{
 			*Value = Buffer;
+			bChanged = true;
 		}
 		if (CustomFont)
 		{
@@ -1435,16 +1437,18 @@ void DrawProperty(UObject* Object, const FProperty& Property, ImFont* CustomFont
 	{
 		Object->PostEditChangeProperty(Property);
 	}
+	return bChanged;
 }
 
 // 클래스 계층을 따라 올라가며 각 단계의 프로퍼티를 표시
-void DrawProperties(UObject* Object, ImFont* CustomFont)
+bool DrawProperties(UObject* Object, ImFont* CustomFont)
 {
 	if (!Object)
 	{
-		return;
+		return false;
 	}
 
+	bool bChanged = false;
 	TArray<UClass*> ClassChain;
 	for (UClass* Class = Object->GetClass(); Class; Class = Class->Super)
 	{
@@ -1486,7 +1490,7 @@ void DrawProperties(UObject* Object, ImFont* CustomFont)
 				{
 					ImGui::BeginDisabled();
 				}
-				DrawProperty(Object, Property, CustomFont);
+				bChanged |= DrawProperty(Object, Property, CustomFont);
 				if (bReadOnly)
 				{
 					ImGui::EndDisabled();
@@ -1495,6 +1499,7 @@ void DrawProperties(UObject* Object, ImFont* CustomFont)
 		}
 		ImGui::PopID();
 	}
+	return bChanged;
 }
 
 void DrawCameraDetailRow(const char* Label, const FString& Value)
@@ -1868,6 +1873,11 @@ void FDetailsPanel::DrawShadowMapPreview(const ULightComponent& Light)
 	const ImVec2 UVMax((ShadowViewport.StartX + ShadowViewport.Width) * InvWidth,
 		(ShadowViewport.StartY + ShadowViewport.Height) * InvHeight);
 	ImGui::Image((ImTextureID)DepthTexture->GetSRV(), ImVec2(PreviewSize, PreviewSize), UVMin, UVMax);
+}
+
+bool DrawObjectProperties(UObject* Object, ImFont* CustomFont)
+{
+	return DrawProperties(Object, CustomFont);
 }
 
 bool FDetailsPanel::Init()

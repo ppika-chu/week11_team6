@@ -230,20 +230,18 @@ void UAnimInstance::TriggerSingleAnimNotify(const FAnimNotifyEventReference& Eve
 	{
 		return;
 	}
-	const uint64 DispatchSerial = NotifyDispatchSerial;
-	if (HandleNotify(*Event))
-	{
-		return;
-	}
-	if (FindLiveObjectByAddress(this) != this || NotifyDispatchSerial != DispatchSerial)
-	{
-		return;
-	}
 	if (Event->Notify)
 	{
 		Event->Notify->Notify(GetSkelMeshComponent(), Cast<UAnimSequenceBase>(const_cast<UObject*>(EventReference.GetSourceObject())), EventReference);
 	}
-	// TODO: AnimNotify_ 이름 함수 호출 연결 예정. 현재 이름 이벤트는 HandleNotify에서 처리한다.
+	else if (!Event->NotifyName.IsNone())
+	{
+		// 이름 이벤트는 등록된 AnimNotify_이름 void() 함수로 전달한다.
+		if (const FFunction* Function = FindFunction(Event->GetNotifyEventName()))
+		{
+			ProcessEvent(Function);
+		}
+	}
 }
 
 void UAnimInstance::EndNotifyStates()

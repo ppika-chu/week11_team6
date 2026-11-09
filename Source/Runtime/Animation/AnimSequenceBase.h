@@ -17,14 +17,11 @@ class UAnimSequenceBase : public UAnimationAsset
 {
 	DECLARE_CLASS(UAnimSequenceBase, UAnimationAsset)
 public:
-	virtual ~UAnimSequenceBase() override
-	{
-		// 엔진 종료 때 전역 정리가 DataModel을 먼저 지울 수 있다.
-		if (DataModel && FindLiveObjectByAddress(DataModel))
-		{
-			delete DataModel;
-		}
-	}
+	virtual ~UAnimSequenceBase() override;
+	// Asset의 Notify 배치와 객체 설정. 로드는 재생에 연결하기 전에 수행한다.
+	void Serialize(json& Handle, bool bIsLoading) override;
+	// Editor/로드에서 생성한 Notify 객체는 Sequence가 보관·해제한다.
+	UObject* CreateNotifyObject(UClass* NotifyClass);
 
 	virtual float GetPlayLength() const override { return DataModel ? DataModel->GetPlayLength() : 0.0f; }
 
@@ -44,4 +41,6 @@ public:
 	float RateScale = 1.0f;
 	TArray<FAnimNotifyEvent> Notifies;
 	UAnimDataModel* DataModel = nullptr;
+private:
+	TArray<UObject*> OwnedNotifyObjects;
 };

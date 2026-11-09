@@ -1296,6 +1296,12 @@ namespace ImGui
         context.TimelineStack.pop_back();
     }
 
+    float NeoGetPixelsPerFrame()
+    {
+        IM_ASSERT(inSequencer && "Not in active sequencer!");
+        return getPerFrameWidth(sequencerData[currentSequencer]);
+    }
+
     void NeoKeyframe(int32_t* value)
     {
         IM_ASSERT(inSequencer && "Not in active sequencer!");

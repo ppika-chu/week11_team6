@@ -6,6 +6,8 @@
 
 #include <sol/sol.hpp>
 
+struct FLuaAnimationGraphBindings;
+
 class FLuaVM final
 {
 public:
@@ -46,4 +48,5 @@ private:
 	void BindEngineAPI();
 	CoroutineScheduler FCoroutineScheduler;
 	TUniquePtr<sol::state> State;
+	std::shared_ptr<FLuaAnimationGraphBindings> AnimationGraphBindings;
 };
