@@ -183,25 +183,7 @@ FSkeletalMeshEditor::FSkeletalMeshEditor(USkeletalMesh* InMesh, int32 InEditorId
 	, ViewportPanelTitle(std::format("Viewport###SkeletalMeshViewport_{}", InMesh->GetPath()))
 	, DetailsPanelTitle(std::format("Details###SkeletalMeshDetails_{}", InMesh->GetPath()))
 {
-	// 가중치가 0보다 큰 정점이 하나라도 있으면 그 본은 메시를 움직인다
-	const int32 NumBones = Mesh->RefSkeleton.GetNum();
-	BoneHasWeights.Init(0, NumBones);
-	const FSkinWeightData& SkinWeights = Mesh->GetSkinWeights();
-	for (int32 VertexIndex = 0; VertexIndex < SkinWeights.InfluenceBones.Num(); ++VertexIndex)
-	{
-		for (int32 i = 0; i < 4; ++i)
-		{
-			const int32 BoneIndex = SkinWeights.InfluenceBones[VertexIndex][i];
-			if (SkinWeights.InfluenceWeights[VertexIndex][i] > 0.0f && BoneIndex < NumBones)
-			{
-				BoneHasWeights[BoneIndex] = 1;
-			}
-		}
-	}
-
-	// Resources는 스캔하지 않으므로 경로로 불러온다. AssetMap에 캐시된다
-	BoneIcon = UAssetManager::Get().LoadTexture(EditorResourcePaths::BoneIcon);
-	BoneNonWeightedIcon = UAssetManager::Get().LoadTexture(EditorResourcePaths::BoneNonWeightedIcon);
+	// 본 아이콘은 부모(FPersonaAssetEditor)가 불러온다. Resources는 스캔하지 않으므로 경로로 불러온다
 	ResetIcon = UAssetManager::Get().LoadTexture(EditorResourcePaths::ResetToDefaultIcon);
 	GizmoWorldIcon = UAssetManager::Get().LoadTexture(EditorResourcePaths::GizmoWorldIcon);
 	GizmoLocalIcon = UAssetManager::Get().LoadTexture(EditorResourcePaths::GizmoLocalIcon);
@@ -230,7 +212,6 @@ TUniquePtr<FPersonaAssetEditor> FSkeletalMeshEditor::CreateReplacementEditor(int
 void FSkeletalMeshEditor::SelectBoneByName(const FString& BoneName)
 {
 	FPersonaAssetEditor::SelectBoneByName(BoneName);
-	bRevealSelectedInTree = SelectedBoneIndex >= 0;
 	SyncBoneGizmoPivot();
 }
 
@@ -610,74 +591,6 @@ void FSkeletalMeshEditor::OnRender()
 	{
 		const int NextMode = (static_cast<int>(BoneGizmo.GetMode()) + 1) % 3;
 		BoneGizmo.SetMode(static_cast<EGizmoMode>(NextMode));
-	}
-}
-
-void FSkeletalMeshEditor::DrawSkeletonTree()
-{
-	// 키보드 내비게이션을 끈다. 켜 두면 클릭한 노드가 포커스를 받아 Space가 노드 접기 / 펼치기로 먹힌다
-	ImGui::PushItemFlag(ImGuiItemFlags_NoNav, true);
-	for (const int32 RootIndex : RootBones)
-	{
-		DrawBoneTreeNode(RootIndex);
-	}
-	ImGui::PopItemFlag();
-
-	// 펼치기 / 스크롤은 한 번만
-	bRevealSelectedInTree = false;
-}
-
-void FSkeletalMeshEditor::DrawBoneTreeNode(int32 BoneIndex)
-{
-	const TArray<int32>& Children = BoneChildren[BoneIndex];
-	const bool bIsLeaf = Children.Num() == 0;
-
-	// 화살표로 펼치고 이름 클릭으로 선택. 처음엔 모두 펼친 상태
-	ImGuiTreeNodeFlags Flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_OpenOnDoubleClick
-		| ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_DefaultOpen;
-	if (bIsLeaf)
-	{
-		Flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
-	}
-	if (BoneIndex == SelectedBoneIndex)
-	{
-		Flags |= ImGuiTreeNodeFlags_Selected;
-	}
-
-	// 뷰포트에서 고른 본이 접힌 곳에 있으면 조상들을 펼친다
-	if (bRevealSelectedInTree && !bIsLeaf && SelectedBoneIndex >= 0 && IsAncestorOf(BoneIndex, SelectedBoneIndex))
-	{
-		ImGui::SetNextItemOpen(true);
-	}
-
-	// ID는 본 인덱스. 이름이 같은 본이 있어도 겹치지 않는다
-	// 라벨은 비우고 아이콘 + 이름을 뒤에 그린다. Image / Text는 클릭을 가로채지 않아 노드 선택은 그대로
-	const bool bIsOpen = ImGui::TreeNodeEx(reinterpret_cast<void*>(static_cast<intptr_t>(BoneIndex)), Flags, "");
-	if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen())
-	{
-		SelectedBoneIndex = BoneIndex;
-	}
-	UTexture2D* Icon = BoneHasWeights[BoneIndex] != 0 ? BoneIcon : BoneNonWeightedIcon;
-	if (IsIconReady(Icon))
-	{
-		const float IconSize = ImGui::GetTextLineHeight();
-		ImGui::SameLine();
-		ImGui::Image((ImTextureID)Icon->GetResource()->GetSRV(), ImVec2(IconSize, IconSize));
-	}
-	ImGui::SameLine();
-	ImGui::TextUnformatted(Mesh->RefSkeleton.RefBoneInfo[BoneIndex].Name.c_str());
-	if (bRevealSelectedInTree && BoneIndex == SelectedBoneIndex)
-	{
-		ImGui::SetScrollHereY(0.5f);
-	}
-
-	if (bIsOpen && !bIsLeaf)
-	{
-		for (const int32 ChildIndex : Children)
-		{
-			DrawBoneTreeNode(ChildIndex);
-		}
-		ImGui::TreePop();
 	}
 }
 

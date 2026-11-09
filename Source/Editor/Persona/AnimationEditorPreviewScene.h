@@ -9,6 +9,24 @@ class USkeletalMeshComponent;
 class AActor;
 class AStaticMeshActor;
 
+// 프리뷰 재생 속도. 언리얼 EAnimationPlaybackSpeeds에서 0.25, 0.75, 5배를 뺀 값만 둔다
+namespace EAnimationPlaybackSpeeds
+{
+	enum Type
+	{
+		OneTenth = 0,
+		Half,
+		Normal,
+		Double,
+		TenTimes,
+		Custom,
+		NumPlaybackSpeeds
+	};
+
+	// Custom 칸은 쓰지 않는다. GetCustomAnimationSpeed 값을 쓴다
+	inline constexpr float Values[NumPlaybackSpeeds] = { 0.1f, 0.5f, 1.0f, 2.0f, 10.0f, 1.0f };
+}
+
 // 에셋 에디터의 3D 화면. 언리얼 FAnimationEditorPreviewScene에 해당한다.
 // 프리뷰 월드(라이트, 바닥, 메시), 렌더 타깃, 오빗 카메라를 가진다. 에셋을 고치지 않는다.
 class FAnimationEditorPreviewScene
@@ -36,6 +54,13 @@ public:
 	bool IsMeshVisible() const { return bShowMesh; }
 	void SetFloorVisible(bool bVisible);
 	bool IsFloorVisible() const { return bShowFloor; }
+
+	// 프리뷰 월드 시간 배율로 재생 속도를 바꾼다 (언리얼은 WorldSettings의 TimeDilation)
+	void SetAnimationPlaybackSpeedMode(EAnimationPlaybackSpeeds::Type InMode);
+	EAnimationPlaybackSpeeds::Type GetAnimationPlaybackSpeedMode() const { return AnimationPlaybackSpeedMode; }
+	// 값을 저장하고 Custom 모드로 바꾼다
+	void SetCustomAnimationSpeed(float InAnimationSpeed);
+	float GetCustomAnimationSpeed() const { return CustomAnimationSpeed; }
 
 	UWorld* GetWorld() const { return PreviewWorld; }
 	USkeletalMeshComponent* GetPreviewComponent() const { return PreviewComponent; }
@@ -68,6 +93,8 @@ private:
 	USkeletalMeshComponent* PreviewComponent = nullptr;
 	bool bShowFloor = false;
 	bool bShowMesh = true;
+	EAnimationPlaybackSpeeds::Type AnimationPlaybackSpeedMode = EAnimationPlaybackSpeeds::Normal;
+	float CustomAnimationSpeed = 1.0f;
 
 	// 레벨 뷰포트 슬롯 / PIE 창과 같은 구성 (EditorEngine::UpdatePIEWindowTargets)
 	FEditorViewportClient ViewportClient;

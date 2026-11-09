@@ -4,6 +4,7 @@
 
 class URenderAsset;
 class USkeletalMesh;
+class UTexture2D;
 class USkeletalMeshComponent;
 class FLineBatcher;
 
@@ -66,6 +67,12 @@ protected:
 	void DrawViewport();
 	// 프리뷰 이미지 위의 입력. 기본은 카메라 조작만
 	virtual void HandleViewportInput();
+	// 뷰포트 왼쪽 위 통계 아래에 붙일 줄. 언리얼 FAnimationViewportClient::GetDisplayInfo
+	virtual FString GetDisplayInfo() const { return FString(); }
+	// 본 계층을 트리로 그리고, 클릭하면 SelectedBoneIndex 갱신. 언리얼도 두 에디터가 스켈레톤 트리를 같이 쓴다
+	void DrawSkeletonTree();
+	// 본 하나와 그 자식들을 재귀로 그린다
+	void DrawBoneTreeNode(int32 BoneIndex);
 
 	// 에셋 키(폴더/이름.fbxbin)에서 폴더와 확장자를 뺀 이름. 창 제목에 보인다
 	static FString GetDisplayName(const FString& AssetKey);
@@ -90,6 +97,12 @@ protected:
 
 	EBoneDrawMode BoneDrawMode = EBoneDrawMode::All;
 	int32 SelectedBoneIndex = -1;
+	bool bRevealSelectedInTree = false;         // 뷰포트에서 고르면 다음 트리 그릴 때 펼치고 스크롤
+
+	// 언리얼 스켈레톤 트리처럼 정점 가중치가 있는 본과 없는 본을 다른 아이콘으로. 생성자에서 한 번 만든다
+	TArray<uint8> BoneHasWeights;               // bool. TArray가 std::vector라 vector<bool>을 피한다
+	UTexture2D* BoneIcon = nullptr;             // 소유는 UAssetManager
+	UTexture2D* BoneNonWeightedIcon = nullptr;
 
 	bool bIsOpen = true;
 	bool bIsVisible = false;    // 지난 프레임 뷰포트 패널의 Begin 결과
