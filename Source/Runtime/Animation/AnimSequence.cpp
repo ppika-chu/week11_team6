@@ -82,7 +82,11 @@ void UAnimSequence::GetBonePose(FAnimPose& OutPose, const FAnimExtractContext& C
 		return;
 	}
 
-	OutPose.LocalTransforms = Skeleton->RefSkeleton.RefBonePose;
+	// 인스턴스가 메시 기준 자세로 채워 넘긴 포즈면 트랙 없는 본에 그 값을 쓴다. 빈 포즈면 스켈레톤 기준 자세로 시작한다
+	if (OutPose.LocalTransforms.Num() != Skeleton->RefSkeleton.GetNum())
+	{
+		OutPose.LocalTransforms = Skeleton->RefSkeleton.RefBonePose;
+	}
 	if (!DataModel)
 	{
 		return;

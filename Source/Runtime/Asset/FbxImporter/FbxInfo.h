@@ -46,6 +46,9 @@ struct FFbxImportOptions
 	int32 FrameImportRangeMax = 0;
 	EInterchangeFrameAlignment FrameAlignment = EInterchangeFrameAlignment::None;
 	bool bKeepFbxNamespace = false; // 켜면 이름의 ':'를 '_'로 바꿔 남기고, 끄면 마지막 ':'까지 지운다. (UE UInterchangeFbxTranslatorSettings)
+	// 비어 있으면 새 SKEL_을 만들고, 스켈레톤 에셋 키를 주면 그 스켈레톤을 쓴다. 없는 본은 합친다 (UE 임포트 옵션 Skeleton)
+	// 임포트 때만 쓰고 .fbxbin에는 저장하지 않는다
+	FString Skeleton;
 };
 
 struct FFbxMaterialData

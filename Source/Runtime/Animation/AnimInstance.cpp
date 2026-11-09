@@ -4,6 +4,8 @@
 #include "BlendSpace.h"
 #include "AnimSequence.h"
 #include "AnimationRuntime.h"
+#include "Skeleton.h"
+#include "Render/SkeletalMesh.h"
 #include "AnimNotifies/AnimNotify.h"
 #include "AnimNotifies/AnimNotifyState.h"
 #include <utility>
@@ -58,7 +60,25 @@ void UAnimInstance::EvaluateAnimation(FAnimPose& OutPose)
 		return;
 	}
 
-	OutPose.LocalTransforms = Mesh->RefSkeleton.RefBonePose;
+	// 그래프는 스켈레톤 본 순서로 돈다. 공유 스켈레톤은 메시와 본 수, 순서가 다를 수 있다 (UE FBoneContainer)
+	// 시작 포즈는 메시에 있는 본은 메시 기준 자세, 없는 본은 스켈레톤 기준 자세다. 컴포넌트가 메시 순서로 바꾼다
+	if (USkeleton* Skeleton = Mesh->Skeleton)
+	{
+		const FSkeletonToMeshLinkup& Linkup = Skeleton->FindOrAddMeshLinkupData(Mesh);
+		OutPose.LocalTransforms = Skeleton->RefSkeleton.RefBonePose;
+		for (int32 SkeletonIndex = 0; SkeletonIndex < OutPose.LocalTransforms.Num(); ++SkeletonIndex)
+		{
+			const int32 MeshIndex = Linkup.SkeletonToMeshTable[SkeletonIndex];
+			if (MeshIndex != INDEX_NONE)
+			{
+				OutPose.LocalTransforms[SkeletonIndex] = Mesh->RefSkeleton.RefBonePose[MeshIndex];
+			}
+		}
+	}
+	else
+	{
+		OutPose.LocalTransforms = Mesh->RefSkeleton.RefBonePose;
+	}
 	if (IsInitialized() && RootNode)
 	{
 		RootNode->Evaluate(OutPose);

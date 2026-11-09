@@ -3,6 +3,7 @@
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimSingleNodeInstance.h"
 #include "Animation/AnimPose.h"
+#include "Animation/Skeleton.h"
 #include "Asset/AssetManager.h"
 #include "Render/SkeletalMesh.h"
 #include "GameFramework/Actor.h"
@@ -389,13 +390,39 @@ void USkeletalMeshComponent::RefreshBoneTransforms()
 
 bool USkeletalMeshComponent::FinalizePoseEvaluationResult(const FAnimPose& InFinalPose)
 {
-	if (!SkeletalMesh || InFinalPose.LocalTransforms.Num() != SkeletalMesh->RefSkeleton.RefBonePose.Num())
+	if (!SkeletalMesh)
+	{
+		return false;
+	}
+
+	// 그래프 결과는 스켈레톤 본 순서다. 이름으로 만든 표로 메시 본 순서로 옮긴다 (UE FBoneContainer의 스켈레톤 → 포즈 번호)
+	if (USkeleton* Skeleton = SkeletalMesh->Skeleton)
+	{
+		if (InFinalPose.LocalTransforms.Num() != Skeleton->RefSkeleton.GetNum())
+		{
+			HTR_LOG(Error, "[Skel] Evaluated pose must contain every skeleton bone");
+			return false;
+		}
+		const FSkeletonToMeshLinkup& Linkup = Skeleton->FindOrAddMeshLinkupData(SkeletalMesh);
+		const TArray<FTransform>& MeshRefPose = SkeletalMesh->RefSkeleton.RefBonePose;
+		BoneSpaceTransforms.SetNum(MeshRefPose.Num());
+		for (int32 MeshIndex = 0; MeshIndex < MeshRefPose.Num(); ++MeshIndex)
+		{
+			// 스켈레톤에 없는 메시 본은 메시 기준 자세 (임포트에서 합치므로 보통 없다)
+			const int32 SkeletonIndex = Linkup.MeshToSkeletonTable[MeshIndex];
+			BoneSpaceTransforms[MeshIndex] = SkeletonIndex != INDEX_NONE ? InFinalPose.LocalTransforms[SkeletonIndex] : MeshRefPose[MeshIndex];
+		}
+	}
+	else if (InFinalPose.LocalTransforms.Num() == SkeletalMesh->RefSkeleton.GetNum())
+	{
+		BoneSpaceTransforms = InFinalPose.LocalTransforms;
+	}
+	else
 	{
 		HTR_LOG(Error, "[Skel] Evaluated pose must contain every mesh bone");
 		return false;
 	}
 
-	BoneSpaceTransforms = InFinalPose.LocalTransforms;
 	for (FTransform& Transform : BoneSpaceTransforms)
 	{
 		Transform.Rotation = Transform.Rotation.Normalized();

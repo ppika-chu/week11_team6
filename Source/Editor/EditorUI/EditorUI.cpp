@@ -4,6 +4,8 @@
 #include "Asset/FbxImporter/FbxAssetLoader.h"
 #include "Asset/FbxImporter/FbxImporter.h"
 #include "Asset/FbxImporter/FbxPath.h"
+#include "Asset/AssetManager.h"
+#include "Animation/Skeleton.h"
 #include <commdlg.h>
 #include <shobjidl.h>
 #include <cstring>
@@ -405,6 +407,34 @@ void FEditorUI::DrawFbxImportDialog()
 
 		ImGui::SeparatorText("Skeletal Meshes");
 		ImGui::PushID("SkeletalFbx");
+		// 언리얼 임포트 옵션 Skeleton. None이면 새 SKEL_을 만들고, 고르면 그 스켈레톤을 공유하며 없는 본은 합친다
+		ImGui::TextUnformatted("Skeleton");
+		ImGui::SetNextItemWidth(-FLT_MIN);
+		if (ImGui::BeginCombo("##FbxSkeleton", FbxOptions.Skeleton.empty() ? "None (create new)" : FbxOptions.Skeleton.c_str()))
+		{
+			if (ImGui::Selectable("None (create new)", FbxOptions.Skeleton.empty()))
+			{
+				FbxOptions.Skeleton.clear();
+			}
+			TArray<FString> SkeletonKeys;
+			UAssetManager::ForEachAsset([&SkeletonKeys](URenderAsset& Asset)
+				{
+					if (Cast<USkeleton>(&Asset) && !Asset.IsRetired())
+					{
+						SkeletonKeys.Add(Asset.GetPath());
+					}
+				});
+			std::sort(SkeletonKeys.begin(), SkeletonKeys.end());
+			for (const FString& Key : SkeletonKeys)
+			{
+				if (ImGui::Selectable(Key.c_str(), FbxOptions.Skeleton == Key))
+				{
+					FbxOptions.Skeleton = Key;
+				}
+			}
+			ImGui::EndCombo();
+		}
+		if (ImGui::IsItemHovered()) ImGui::SetTooltip("None: create a new skeleton for this FBX.\nSelected: share that skeleton. Bones it lacks are added to it.\nFor an animation-only FBX, pick the character's skeleton to play it on that character.");
 		ImGui::Checkbox("Bake Meshes", &FbxOptions.bBakeSkeletalMeshes);
 		if (ImGui::IsItemHovered()) ImGui::SetTooltip("On: include placement outside the rig in geometry and bind transforms.\nOff: remove the root bone parent's global bind transform; retain the root bone's own transform.");
 		ImGui::Checkbox("Combine Meshes", &FbxOptions.bCombineSkeletalMeshes);
