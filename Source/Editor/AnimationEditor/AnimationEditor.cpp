@@ -7,7 +7,7 @@
 #include "Animation/AnimSequence.h"
 #include "Animation/Skeleton.h"
 #include "Asset/AssetManager.h"
-#include "Components/SkeletalMeshComponent.h"
+#include "Editor/Persona/DebugSkelMeshComponent.h"
 #include "Render/SkeletalMesh.h"
 
 #include <imgui.h>
