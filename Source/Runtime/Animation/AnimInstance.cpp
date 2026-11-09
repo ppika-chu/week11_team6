@@ -44,7 +44,7 @@ void UAnimInstance::UpdateAnimation(float DeltaSeconds)
 	bNeedsQueuedAnimEventsDispatched = true;
 	if (RootNode)
 	{
-		RootNode->Update(DeltaSeconds);
+		RootNode->Update(FAnimationUpdateContext{ this, DeltaSeconds });
 	}
 }
 

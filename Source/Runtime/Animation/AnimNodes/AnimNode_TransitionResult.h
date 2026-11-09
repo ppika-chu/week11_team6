@@ -13,7 +13,7 @@ public:
 	{
 		bCanTransition = false;
 	}
-	void Update(float DeltaTime)
+	void Update(const FAnimationUpdateContext& Context)
 	{
 
 	}

@@ -2,6 +2,7 @@
 
 #include "AnimNode_Base.h"
 #include "Animation/AnimPose.h"
+#include "Animation/AnimationRuntime.h"
 #include "Math/EngineMath.h"
 
 // 두 입력 노드 A와 B의 로컬 포즈를 Alpha에 따라 혼합하는 노드.
@@ -11,9 +12,64 @@
 struct FAnimNode_TwoWayBlend : public FAnimNode_Base
 {
 public:
-	void Initialize() override;
-	void Update(float DeltaTime) override;
-	void Evaluate(FAnimPose& OutPose) override;
+	void Initialize()
+	{
+		if (InputNodeA)
+		{
+			InputNodeA->Initialize();
+		}
+
+		if (InputNodeB && InputNodeB != InputNodeA)
+		{
+			InputNodeB->Initialize();
+		}
+	}
+	void Update(const FAnimationUpdateContext& Context)
+	{
+		if (InputNodeA && InputNodeA == InputNodeB)
+		{
+			InputNodeA->Update(Context);
+			return;
+		}
+		if (InputNodeA && (!InputNodeB || Alpha < 1.0f))
+		{
+			InputNodeA->Update(Context.FractionalWeight(InputNodeB ? 1.0f - Alpha : 1.0f));
+		}
+		if (InputNodeB && (!InputNodeA || Alpha > 0.0f))
+		{
+			InputNodeB->Update(Context.FractionalWeight(InputNodeA ? Alpha : 1.0f));
+		}
+	}
+	void Evaluate(FAnimPose& OutPose)
+	{
+		if (InputNodeA && InputNodeB)
+		{
+			InputNodeA->Evaluate(OutPose);
+			FAnimPose PoseB;
+			InputNodeB->Evaluate(PoseB);
+
+			// 혼합할 수 없으면 A의 포즈를 유지한다.
+			if (OutPose.LocalTransforms.Num() != PoseB.LocalTransforms.Num())
+			{
+				return;
+			}
+
+			// API는 A의 가중치를 받으므로 B의 Alpha를 반전한다.
+			FAnimationRuntime::BlendTwoPosesTogetherInPlace(OutPose, PoseB, 1.0f - Alpha);
+		}
+		else if (InputNodeA)
+		{
+			InputNodeA->Evaluate(OutPose);
+		}
+		else if (InputNodeB)
+		{
+			InputNodeB->Evaluate(OutPose);
+		}
+		else
+		{
+			OutPose.LocalTransforms.Reset();
+		}
+	}
 
 	void SetInputNodeA(FAnimNode_Base* InInputNodeA) { InputNodeA = InInputNodeA; }
 	FAnimNode_Base* GetInputNodeA() const { return InputNodeA; }

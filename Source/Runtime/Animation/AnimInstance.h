@@ -46,11 +46,11 @@ public:
 
 	// BlendSpace 시간 갱신 — CurrentTime은 0~1 진행률이며 Cache와 구간 index는 BlendSpace Player Node가 보관한다.
 	// 시간을 전진시킬 때 Notify도 같이 수집한다.
-	// TODO: BlendSpace Player Node의 Update에서 호출하고, Evaluate에서 갱신된 Cache로 UBlendSpace::GetAnimationPose를 호출하도록 연결 예정.
+	// BlendSpacePlayer의 Update에서 호출하며 Evaluate는 갱신된 Cache로 UBlendSpace::GetAnimationPose를 호출한다.
 	void BlendSpaceAdvanceImmediate(UBlendSpace* BlendSpace, const FVector& BlendInput, TArray<FBlendSampleData>& BlendSampleDataCache, bool bLooping, float PlayRate, float DeltaSeconds, float& CurrentTime, int32& CachedTriangulationIndex, float EffectiveBlendWeight = 1.0f);
 
 	// Sequence Player Node와 SingleNode가 재생 시간을 전진시키고 Notify를 수집하는 입구.
-	// TODO: Graph의 최종 Weight 전달 연결 예정. 단독 재생의 Weight는 1이다.
+	// Update Context의 최종 Weight를 전달한다. 단독 재생의 Weight는 1이다.
 	void SequenceAdvanceImmediate(UAnimSequenceBase* Sequence, bool bLooping, float PlayRate, float DeltaSeconds, float& CurrentTime, float EffectiveBlendWeight = 1.0f);
 
 	// 프레임별 수집 결과 전달 — 일반 재생은 Pose 확정 뒤 한 번 호출한다.

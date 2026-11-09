@@ -3,7 +3,8 @@
 #include "AnimNode_Base.h"
 #include "Animation/AnimState.h"
 #include "Animation/AnimTransition.h"
-#include "Animation/AnimUpdateContext.h"
+#include "Animation/AnimationUpdateContext.h"
+#include "Animation/AnimationRuntime.h"
 
 #include <algorithm>
 
@@ -39,85 +40,64 @@ public:
 			CurrentStateIndex = InitialStateIndex;
 		}
 	}
-	void Update(float DeltaTime) override
+	void Update(const FAnimationUpdateContext& Context) override
 	{
 		if (!IsValidStateIndex(CurrentStateIndex))
 		{
 			return;
 		}
-		                                         
-		const float FrameDeltaTime = FMath::Max(DeltaTime, 0.0f);
 
-		if (ActiveTransitionIndex != -1)
+		// 자식 Update 전에 전이를 선택한다. Notify 수집과 Pose 평가에 같은 Weight를 사용한다.
+		if (ActiveTransitionIndex == -1)
 		{
-			FAnimTransition* Transition = Transitions.IsValidIndex(ActiveTransitionIndex)
-				? Transitions[ActiveTransitionIndex] : nullptr;
-			if (!Transition ||
-				!IsValidStateIndex(Transition->GetFromStateIndex()) ||
-				!IsValidStateIndex(Transition->GetToStateIndex()))
+			TArray<int32> Candidates;
+			for (int32 Index = 0; Index < Transitions.Num(); ++Index)
 			{
-				ActiveTransitionIndex = -1;
-				TransitionElapsedTime = 0.0f;
-				States[CurrentStateIndex]->Update(FrameDeltaTime);
-				return;
+				FAnimTransition* Transition = Transitions[Index];
+				if (Transition && Transition->GetFromStateIndex() == CurrentStateIndex && IsValidStateIndex(Transition->GetToStateIndex()) && Transition->GetToStateIndex() != CurrentStateIndex)
+				{
+					Candidates.Add(Index);
+				}
 			}
+			std::stable_sort(Candidates.begin(), Candidates.end(), [this](int32 A, int32 B){
+				return Transitions[A]->GetPriority() < Transitions[B]->GetPriority();
+			});
+			for (int32 Index : Candidates)
+			{
+				FAnimTransition* Transition = Transitions[Index];
+				if (Transition->EvaluateCondition(Context))
+				{
+					CurrentStateIndex = Transition->GetToStateIndex();
+					ActiveTransitionIndex = Transition->GetBlendDuration() > 0.0f ? Index : -1;
+					TransitionElapsedTime = 0.0f;
+					States[CurrentStateIndex]->Initialize();
+					break;
+				}
+			}
+		}
 
-			const int32 FromIndex = Transition->GetFromStateIndex();
-			const int32 ToIndex = Transition->GetToStateIndex();
-			States[FromIndex]->Update(FrameDeltaTime);
-			if (ToIndex != FromIndex)
-			{
-				States[ToIndex]->Update(FrameDeltaTime);
-			}
-
-			const float Duration = FMath::Max(Transition->GetBlendDuration(), 0.0f);
-			TransitionElapsedTime = FMath::Min(TransitionElapsedTime + FrameDeltaTime, Duration);
-			if (TransitionElapsedTime >= Duration)
-			{
-				ActiveTransitionIndex = -1;
-				TransitionElapsedTime = 0.0f;
-			}
+		if (ActiveTransitionIndex == -1)
+		{
+			States[CurrentStateIndex]->Update(Context);
 			return;
 		}
 
-		States[CurrentStateIndex]->Update(FrameDeltaTime);
-
-		// 현재 상태에서 출발하는 유효한 전이만 검사한다. 자기 전이는 첫 구현에서 제외한다.
-		TArray<int32> Candidates;
-		for (int32 Index = 0; Index < Transitions.Num(); ++Index)
+		FAnimTransition* Transition = Transitions[ActiveTransitionIndex];
+		const float Duration = Transition->GetBlendDuration();
+		TransitionElapsedTime = FMath::Min(TransitionElapsedTime + Context.GetDeltaTime(), Duration);
+		const float Alpha = TransitionElapsedTime / Duration;
+		if (Alpha < 1.0f)
 		{
-			FAnimTransition* Transition = Transitions[Index];
-			if (!Transition || Transition->GetFromStateIndex() != CurrentStateIndex ||
-				!IsValidStateIndex(Transition->GetToStateIndex()) ||
-				Transition->GetToStateIndex() == CurrentStateIndex)
-			{
-				continue;
-			}
-			Candidates.Add(Index);
+			States[Transition->GetFromStateIndex()]->Update(Context.FractionalWeight(1.0f - Alpha));
 		}
-
-		// 우선순위 숫자가 작을수록 먼저 검사하고, 동률이면 등록 순서를 유지한다.
-		std::stable_sort(Candidates.begin(), Candidates.end(), [this](int32 A, int32 B){
-			return Transitions[A]->GetPriority() < Transitions[B]->GetPriority();
-		});
-
-		const FAnimUpdateContext Context{ AnimInstance, FrameDeltaTime };
-		for (int32 Index : Candidates)
+		if (Alpha > 0.0f)
 		{
-			FAnimTransition* Transition = Transitions[Index];
-			if (!Transition->EvaluateCondition(Context))
-			{
-				continue;
-			}
-
-			CurrentStateIndex = Transition->GetToStateIndex();
-			ActiveTransitionIndex = Transition->GetBlendDuration() > 0.0f ? Index : -1;
+			States[CurrentStateIndex]->Update(Context.FractionalWeight(Alpha));
+		}
+		if (Alpha >= 1.0f)
+		{
+			ActiveTransitionIndex = -1;
 			TransitionElapsedTime = 0.0f;
-
-			// 목적 상태는 진입 시 재시작하며, 시작 프레임에도 재생 시간을 한 번 진행한다.
-			States[CurrentStateIndex]->Initialize();
-			States[CurrentStateIndex]->Update(FrameDeltaTime);
-			return;
 		}
 	}
 	void Evaluate(FAnimPose& OutPose)
@@ -173,10 +153,8 @@ public:
 
 		const float Alpha = FMath::Clamp(TransitionElapsedTime / Duration, 0.0f, 1.0f);
 
-		for (int32 Index = 0; Index < OutPose.LocalTransforms.Num(); ++Index)
-		{
-			OutPose.LocalTransforms[Index] = FTransform::Blend(OutPose.LocalTransforms[Index],ToPose.LocalTransforms[Index],Alpha);
-		}
+		// API는 첫 포즈의 가중치를 받으므로 목적 포즈의 Alpha를 반전한다.
+		FAnimationRuntime::BlendTwoPosesTogetherInPlace(OutPose, ToPose, 1.0f - Alpha);
 	}
 
 	// 등록한 인덱스를 반환한다. 이 머신의 상태 인덱스로 전이를 구성한다.
@@ -220,8 +198,6 @@ public:
 	int32 GetCurrentStateIndex() const { return CurrentStateIndex; }
 	int32 GetActiveTransitionIndex() const { return ActiveTransitionIndex; }
 	float GetTransitionElapsedTime() const { return TransitionElapsedTime; }
-	void SetAnimInstance(const UAnimInstance* InAnimInstance) { AnimInstance = InAnimInstance; }
-	const UAnimInstance* GetAnimInstance() const { return AnimInstance; }
 
 private:
 	bool IsValidStateIndex(int32 StateIndex) const
@@ -231,7 +207,6 @@ private:
 
 	TArray<FAnimState*> States; // StateMachine이 선택할 수 있는 상태들의 배열
 	TArray<FAnimTransition*> Transitions; // 상태 간 전이들의 배열
-	const UAnimInstance* AnimInstance = nullptr; // 조건 콜백에 전달할 소유 AnimInstance의 비소유 참조
 
 	// 공유 가능한 구성 정보와 캐릭터별 실행 진행 상태를 구분한다.
 	int32 InitialStateIndex = -1; // 구성에서 지정하는 최초 진입 상태
