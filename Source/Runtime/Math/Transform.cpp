@@ -46,6 +46,31 @@ bool FTransform::ContainsNaN() const
 		|| !std::isfinite(Rotation.X) || !std::isfinite(Rotation.Y) || !std::isfinite(Rotation.Z) || !std::isfinite(Rotation.W);
 }
 
+FTransform FTransform::operator*(const FTransform& Other) const
+{
+	FTransform Result;
+	Result.Rotation = (Other.Rotation * Rotation).Normalized();
+	Result.Scale = FVector(Scale.X * Other.Scale.X, Scale.Y * Other.Scale.Y, Scale.Z * Other.Scale.Z);
+	Result.Location = Other.TransformPosition(Location);
+	return Result;
+}
+
+FTransform FTransform::Inverse() const
+{
+	const auto SafeReciprocal = [](float Value) { return std::abs(Value) > 1.e-8f ? 1.0f / Value : 0.0f; };
+	FTransform Result;
+	Result.Rotation = Rotation.Inverse();
+	Result.Scale = FVector(SafeReciprocal(Scale.X), SafeReciprocal(Scale.Y), SafeReciprocal(Scale.Z));
+	// UE: InvRotation * (InvScale3D * -Translation)
+	Result.Location = Result.Rotation.RotateVector(FVector(-Location.X * Result.Scale.X, -Location.Y * Result.Scale.Y, -Location.Z * Result.Scale.Z));
+	return Result;
+}
+
+FVector FTransform::TransformPosition(const FVector& V) const
+{
+	return Rotation.RotateVector(FVector(V.X * Scale.X, V.Y * Scale.Y, V.Z * Scale.Z)) + Location;
+}
+
 FMatrix FTransform::GetLocalMatrix() const
 {
 	FMatrix RotationMatrix = Rotation.ToFMatrix();
