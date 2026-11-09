@@ -23,6 +23,9 @@ public:
 	void SetReverse(bool bInReverse);
 	bool IsReverse() const { return bReverse; }
 	void SetPosition(float InPosition, bool bFireNotifies = true);
+	// 한 프레임 앞 / 뒤 키 위치로 이동한다. 반복 중이면 끝과 처음이 이어진다.
+	void StepForward();
+	void StepBackward();
 	float GetCurrentTime() const { return CurrentTime; }
 	float GetLength() const;
 

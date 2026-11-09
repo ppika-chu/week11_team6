@@ -177,6 +177,9 @@ namespace ImGui {
 
     // Draw some rects on the timeline
     IMGUI_API void NeoDrawTimelineRect(FrameIndexType from, FrameIndexType to, ImVec4 color={1,1,1,0.1}, const bool inPrevLane=false);
+
+    // HitoriEngine: 이번 프레임에 현재 프레임 손잡이 옆에 그릴 글자. BeginNeoSequencer 안에서 매 프레임 호출한다
+    IMGUI_API void NeoSetCurrentFrameLabel(const char* label);
 }
 
 

@@ -1,10 +1,11 @@
 #pragma once
 
 #include "SkinnedMeshComponent.h"
+// PROPERTY(AnimToPlay)가 UObject 파생인지 검사하므로 전방 선언이 아니라 정의가 필요하다
+#include "Animation/AnimationAsset.h"
 
 class UAnimInstance;
 class UAnimSingleNodeInstance;
-class UAnimationAsset;
 struct FAnimPose;
 
 namespace EAnimationMode
@@ -18,12 +19,34 @@ namespace EAnimationMode
 class USkeletalMeshComponent : public USkinnedMeshComponent
 {
 	DECLARE_CLASS(USkeletalMeshComponent, USkinnedMeshComponent)
+
+	// UE는 AnimToPlay~SavedPlayRate를 FSingleAnimationPlayData AnimationData로 묶는다.
+	// PROPERTY가 구조체 안 멤버를 Details에 펼치지 못해 같은 이름으로 컴포넌트에 둔다.
+	REFLECT_START(USkeletalMeshComponent)
+		PROPERTY_ENUM(AnimationMode, "Use Animation Blueprint", "Use Animation Asset")
+		PROPERTY(AnimToPlay)
+		PROPERTY(bSavedLooping)
+		PROPERTY(bSavedPlaying)
+		PROPERTY(SavedPosition)
+		PROPERTY(SavedPlayRate)
+	REFLECT_END()
+
 public:
 	USkeletalMeshComponent();
 	virtual ~USkeletalMeshComponent() override;
 
+	virtual void BeginPlay() override;
 	virtual void TickComponent(float DeltaTime) override;
 	virtual void InitializeComponent() override;
+	virtual void PostEditChangeProperty(const FProperty& Property) override;
+	virtual bool CanEditChange(const FProperty& Property) const override;
+
+	// Use Animation Asset 모드에서 인스턴스를 만들 때 넘기는 값 (UE FSingleAnimationPlayData)
+	UAnimationAsset* AnimToPlay = nullptr;
+	bool bSavedLooping = true;
+	bool bSavedPlaying = true;
+	float SavedPosition = 0.0f;
+	float SavedPlayRate = 1.0f;
 
 	// Instance 구성과 갱신 — Class·재생 모드에 맞는 Instance를 준비하고 Update를 호출한다.
 	void SetAnimInstanceClass(UClass* NewClass);

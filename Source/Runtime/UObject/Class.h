@@ -48,6 +48,16 @@ public:
 		Properties.Add({ InName, InType, InOffset, sizeof(T), nullptr, InFlags });
 	}
 
+	template<typename T>
+	void AddEnumProperty(const FString& InName, uint64 InOffset, std::initializer_list<FString> InEnumNames, uint32 InFlags = CPF_Default)
+	{
+		// 직렬화와 Details가 int32로 읽고 쓴다
+		static_assert(std::is_enum_v<T> && sizeof(T) == sizeof(int32), "PROPERTY_ENUM needs an int32-sized enum");
+		FProperty Property{ InName, EPropertyType::Enum, InOffset, sizeof(T), nullptr, InFlags };
+		Property.EnumNames = InEnumNames;
+		Properties.Add(std::move(Property));
+	}
+
 private:
 	mutable int32 ClassUnique = 0;
 	friend FName MakeUniqueObjectName(UObject*, const UClass*, FName);

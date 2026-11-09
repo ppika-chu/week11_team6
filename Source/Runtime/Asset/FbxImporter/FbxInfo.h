@@ -45,6 +45,7 @@ struct FFbxImportOptions
 	int32 FrameImportRangeMin = 0;
 	int32 FrameImportRangeMax = 0;
 	EInterchangeFrameAlignment FrameAlignment = EInterchangeFrameAlignment::None;
+	bool bKeepFbxNamespace = false; // 켜면 이름의 ':'를 '_'로 바꿔 남기고, 끄면 마지막 ':'까지 지운다. (UE UInterchangeFbxTranslatorSettings)
 };
 
 struct FFbxMaterialData

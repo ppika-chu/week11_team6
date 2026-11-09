@@ -22,7 +22,8 @@ enum class EPropertyType
 	LinearColor,
 	Rotator,
 	Transform,
-	Object
+	Object,
+	Enum // int32 크기 enum. 값 순서대로의 표시 이름을 FProperty::EnumNames에 둔다 (UE FEnumProperty + UEnum)
 };
 
 template<typename T>
@@ -81,6 +82,27 @@ struct FProperty
 	size_t Size;
 	UClass* Class = nullptr;
 	uint32 Flags = CPF_Default;
+	// Enum 타입만 쓴다. 인덱스가 enum 값이다. 저장도 이 이름으로 한다 (UE도 enum을 이름으로 저장)
+	TArray<FString> EnumNames;
 
 	bool HasAnyFlags(uint32 InFlags) const { return (Flags & InFlags) != 0; }
+
+	// 이름에 맞는 enum 값. 없으면 INDEX_NONE (UE UEnum::GetValueByName)
+	int32 GetEnumValueByName(const FString& InName) const
+	{
+		for (int32 Index = 0; Index < EnumNames.Num(); ++Index)
+		{
+			if (EnumNames[Index] == InName)
+			{
+				return Index;
+			}
+		}
+		return INDEX_NONE;
+	}
+
+	// 값에 맞는 이름. 범위 밖이면 빈 문자열 (UE UEnum::GetNameStringByValue)
+	FString GetEnumNameStringByValue(int32 Value) const
+	{
+		return Value >= 0 && Value < EnumNames.Num() ? EnumNames[Value] : FString();
+	}
 };

@@ -21,10 +21,6 @@ public:
     const FGizmo* GetGizmo() const override { return &BoneGizmo; }
 
 private:
-    // 본 계층을 트리로 그리고, 클릭하면 SelectedBoneIndex 갱신
-    void DrawSkeletonTree();
-    // 본 하나와 그 자식들을 재귀로 그린다
-    void DrawBoneTreeNode(int32 BoneIndex);
     // 선택한 본의 이름, 부모 + Bone / Reference를 위아래로 (언리얼 BoneProxyDetailsCustomization)
     void DrawDetails();
     // 현재 포즈 편집. 칸 옆 아이콘으로 Local / World, Reference와 다르면 Reset 아이콘
@@ -63,11 +59,7 @@ private:
     FGizmo BoneGizmo;                           // 레벨 에디터와 따로. 결과 적용만 다르다
     bool bGizmoUsedThisClick = false;           // 이번 클릭이 기즈모 드래그였으면 놓을 때 본 선택을 하지 않는다
 
-    // 언리얼 스켈레톤 트리처럼 정점 가중치가 있는 본과 없는 본을 다른 아이콘으로. 생성자에서 한 번 만든다
-    TArray<uint8> BoneHasWeights;               // bool. TArray가 std::vector라 vector<bool>을 피한다
-    UTexture2D* BoneIcon = nullptr;             // 소유는 UAssetManager
-    UTexture2D* BoneNonWeightedIcon = nullptr;
-    UTexture2D* ResetIcon = nullptr;
+    UTexture2D* ResetIcon = nullptr;            // 소유는 UAssetManager
     // 디테일 칸 옆 공간 토글. 파일이 없으면 nullptr이고 글자 버튼으로 그린다
     UTexture2D* GizmoWorldIcon = nullptr;
     UTexture2D* GizmoLocalIcon = nullptr;
@@ -76,5 +68,4 @@ private:
     bool bLocalLocation = true;
     bool bLocalRotation = true;
     bool bLocalScale = true;
-    bool bRevealSelectedInTree = false;         // 뷰포트에서 고르면 다음 트리 그릴 때 펼치고 스크롤
 };

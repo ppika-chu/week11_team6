@@ -172,6 +172,10 @@ void UWorld::Tick(float DeltaTime)
 	if (WorldType == EWorldType::EditorPreview)
 	{
 		// 게임 시작 처리(BeginPlay), Lua, 충돌 없이 등록된 Tick 함수만 실행한다.
+		// 애니메이션 에디터의 재생 속도(언리얼 TimeDilation)가 TimeScale로 들어오므로 월드 시간을 쓴다.
+		UpdateGameTime(DeltaTime);
+		DeltaTime = GameTime.GetDeltaWorldTimeSeconds();
+
 		bInGameTick = true;
 		TickTaskManager.RunAllTickGroups(DeltaTime);
 		FlushPendingDestroyComponents();

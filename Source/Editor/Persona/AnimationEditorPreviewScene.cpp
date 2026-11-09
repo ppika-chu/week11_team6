@@ -62,6 +62,26 @@ void FAnimationEditorPreviewScene::SetMeshVisible(bool bVisible)
 	PreviewComponent->SetVisible(bShowMesh);
 }
 
+void FAnimationEditorPreviewScene::SetAnimationPlaybackSpeedMode(EAnimationPlaybackSpeeds::Type InMode)
+{
+	AnimationPlaybackSpeedMode = InMode;
+
+	if (PreviewWorld)
+	{
+		const float AnimationSpeed = (InMode == EAnimationPlaybackSpeeds::Custom)
+			? GetCustomAnimationSpeed()
+			: EAnimationPlaybackSpeeds::Values[AnimationPlaybackSpeedMode];
+		// 0 ~ 10배로 제한된다
+		PreviewWorld->SetTimeScale(AnimationSpeed);
+	}
+}
+
+void FAnimationEditorPreviewScene::SetCustomAnimationSpeed(float InAnimationSpeed)
+{
+	CustomAnimationSpeed = InAnimationSpeed;
+	SetAnimationPlaybackSpeedMode(EAnimationPlaybackSpeeds::Custom);
+}
+
 void FAnimationEditorPreviewScene::SetFloorVisible(bool bVisible)
 {
 	bShowFloor = bVisible;
