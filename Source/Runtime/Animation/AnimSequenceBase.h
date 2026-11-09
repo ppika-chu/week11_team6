@@ -31,6 +31,11 @@ public:
 	// 대상 Skeleton 순서의 전체 Local Pose를 채우며 시간은 전진시키지 않는다.
 	virtual void GetAnimationPose(FAnimPose& OutPose, const FAnimExtractContext& ExtractionContext) const = 0;
 
+	// Root Motion을 쓰는 에셋인지 (UE UAnimSequenceBase::HasRootMotion)
+	virtual bool HasRootMotion() const { return false; }
+	// StartTime에서 DeltaTime만큼 진행하는 동안 루트 본의 변화량. 반복이면 끝을 넘어 이어 붙인다 (UE ExtractRootMotion)
+	virtual FTransform ExtractRootMotion(float StartTime, float DeltaTime, bool bAllowLooping) const { return FTransform::Identity; }
+
 	// 이벤트 조회 — 시간 전진과 실행은 호출자가 담당한다.
 	void GetAnimNotifies(float StartTime, float DeltaTime, FAnimNotifyContext& NotifyContext) const;
 	void GetAnimNotifiesFromDeltaPositions(float PreviousPosition, float CurrentPosition, FAnimNotifyContext& NotifyContext) const;

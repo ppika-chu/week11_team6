@@ -5,6 +5,7 @@
 #include "Animation/AnimPose.h"
 #include "Asset/AssetManager.h"
 #include "Render/SkeletalMesh.h"
+#include "GameFramework/Actor.h"
 
 USkeletalMeshComponent::USkeletalMeshComponent()
 {
@@ -247,7 +248,64 @@ void USkeletalMeshComponent::TickComponent(float DeltaTime)
 	if (IsRegistered() && AnimScriptInstance && AnimScriptInstance->IsInitialized())
 	{
 		RefreshBoneTransforms();
+		ApplyRootMotionToOwner();
 	}
+}
+
+FRootMotionMovementParams USkeletalMeshComponent::ConsumeRootMotion()
+{
+	return AnimScriptInstance ? AnimScriptInstance->ConsumeExtractedRootMotion() : FRootMotionMovementParams();
+}
+
+FTransform USkeletalMeshComponent::ConvertLocalRootMotionToWorld(const FTransform& LocalRootMotion) const
+{
+	const AActor* Owner = GetOwner();
+	const USceneComponent* ActorRoot = Owner ? Owner->GetRootComponent() : nullptr;
+	if (!ActorRoot)
+	{
+		return FTransform::Identity;
+	}
+
+	// UE USkeletalMeshComponent::ConvertLocalRootMotionToWorld와 같은 계산
+	const FTransform ComponentTransform(GetWorldRotation().Quaternion(), GetWorldLocation(), GetWorldScale3D());
+	const FTransform ActorToWorld(ActorRoot->GetWorldRotation().Quaternion(), ActorRoot->GetWorldLocation(), ActorRoot->GetWorldScale3D());
+	const FTransform ComponentToActor = ActorToWorld.GetRelativeTransform(ComponentTransform);
+	const FTransform NewComponentToWorld = LocalRootMotion * ComponentTransform;
+	const FTransform NewActorTransform = ComponentToActor * NewComponentToWorld;
+
+	const FVector DeltaWorldTranslation = NewActorTransform.Location - ActorToWorld.Location;
+	const FQuat NewWorldRotation = ComponentTransform.Rotation * LocalRootMotion.Rotation;
+	const FQuat DeltaWorldRotation = (NewWorldRotation * ComponentTransform.Rotation.Inverse()).Normalized();
+	return FTransform(DeltaWorldRotation, DeltaWorldTranslation);
+}
+
+void USkeletalMeshComponent::ApplyRootMotionToOwner()
+{
+	const FRootMotionMovementParams RootMotion = ConsumeRootMotion();
+	AActor* Owner = GetOwner();
+	USceneComponent* ActorRoot = Owner ? Owner->GetRootComponent() : nullptr;
+	if (!RootMotion.bHasRootMotion || !ActorRoot)
+	{
+		return;
+	}
+
+	// 액터의 첫 스켈레탈 메시만 옮긴다. 여러 개가 각각 옮기면 여러 번 움직인다 (UE도 Character의 Mesh 하나만 쓴다)
+	for (UActorComponent* Component : Owner->GetComponents())
+	{
+		if (USkeletalMeshComponent* SkeletalMesh = Cast<USkeletalMeshComponent>(Component))
+		{
+			if (SkeletalMesh != this)
+			{
+				return;
+			}
+			break;
+		}
+	}
+
+	// 이동, 회전 모두 적용한다. 바닥 판정이 없어 UE Walking처럼 Z를 버리지 않는다. 충돌 검사(sweep)는 하지 않는다
+	const FTransform WorldDelta = ConvertLocalRootMotionToWorld(RootMotion.GetRootMotionTransform());
+	const FQuat NewActorRotation = (WorldDelta.Rotation * ActorRoot->GetWorldRotation().Quaternion()).Normalized();
+	ActorRoot->MoveComponent(WorldDelta.Location, NewActorRotation.ToFRotator(), false);
 }
 
 void USkeletalMeshComponent::TickAnimation(float DeltaTime)

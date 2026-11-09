@@ -3,6 +3,7 @@
 #include "UObject/Object.h"
 #include "UObject/Class.h"
 #include "AnimNotifyQueue.h"
+#include "AnimationAsset.h"
 
 class USkeletalMeshComponent;
 struct FAnimNode_Base;
@@ -12,11 +13,29 @@ class UAnimSequenceBase;
 struct FVector;
 struct FBlendSampleData;
 
+// 이 인스턴스가 Root Motion을 어떻게 다룰지 (UE ERootMotionMode). 몽타주가 없어 RootMotionFromMontagesOnly는 두지 않는다
+namespace ERootMotionMode
+{
+	enum Type : int32
+	{
+		NoRootMotionExtraction,   // 꺼내지 않는다. 루트 본이 애니메이션대로 움직인다
+		IgnoreRootMotion,         // 꺼내서 루트는 고정하고 변화량은 버린다
+		RootMotionFromEverything, // 꺼내서 루트를 고정하고 변화량을 모은다
+	};
+}
+
 // 컴포넌트별 애니메이션 실행 상태와 Graph 실행을 관리한다.
 class UAnimInstance : public UObject
 {
 	DECLARE_CLASS(UAnimInstance, UObject)
 public:
+	// UE 기본값은 RootMotionFromMontagesOnly지만 몽타주가 없어 시퀀스에서도 받는다
+	ERootMotionMode::Type RootMotionMode = ERootMotionMode::RootMotionFromEverything;
+	// 포즈 평가에서 루트를 고정할지 (UE FAnimInstanceProxy::ShouldExtractRootMotion)
+	bool ShouldExtractRootMotion() const { return RootMotionMode != ERootMotionMode::NoRootMotionExtraction; }
+	// 이번 Update에서 모은 변화량을 꺼내고 비운다 (UE UAnimInstance::ConsumeExtractedRootMotion)
+	FRootMotionMovementParams ConsumeExtractedRootMotion();
+
 	void InitializeAnimation();
 	void UninitializeAnimation();
 	void UpdateAnimation(float DeltaSeconds);
@@ -51,6 +70,8 @@ public:
 
 protected:
 	FAnimNotifyQueue NotifyQueue;
+	// SequenceAdvanceImmediate가 모으고 ConsumeExtractedRootMotion이 비운다 (UE ExtractedRootMotion)
+	FRootMotionMovementParams ExtractedRootMotion;
 	// 다음 프레임의 End 비교에 쓸 이벤트 값과 출처 정보. NotifyState 객체는 Asset이 보관한다.
 	TArray<FAnimNotifyEvent> ActiveAnimNotifyState;
 	TArray<FAnimNotifyEventReference> ActiveAnimNotifyEventReference;

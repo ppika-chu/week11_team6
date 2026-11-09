@@ -37,6 +37,8 @@ void UAnimInstance::UpdateAnimation(float DeltaSeconds)
 	}
 
 	ClearQueuedAnimEvents();
+	// 지난 프레임에 아무도 꺼내 가지 않은 변화량은 버린다 (에디터처럼 적용하는 쪽이 없을 때 쌓이지 않게)
+	ExtractedRootMotion.Clear();
 	DeltaTime = DeltaSeconds;
 	NativeUpdateAnimation(DeltaSeconds);
 	bNeedsQueuedAnimEventsDispatched = true;
@@ -111,9 +113,21 @@ void UAnimInstance::SequenceAdvanceImmediate(UAnimSequenceBase* Sequence, bool b
 	const float PreviousTime = CurrentTime;
 	const float MoveDelta = DeltaSeconds * PlayRate * Sequence->RateScale;
 	FAnimationRuntime::AdvanceTime(bLooping, MoveDelta, CurrentTime, Sequence->GetPlayLength());
+	// UE UAnimSequenceBase::HandleAssetPlayerTickedInternal: 진행한 구간의 루트 변화량을 모은다
+	if (RootMotionMode == ERootMotionMode::RootMotionFromEverything && Sequence->HasRootMotion() && MoveDelta != 0.0f)
+	{
+		ExtractedRootMotion.Accumulate(Sequence->ExtractRootMotion(PreviousTime, MoveDelta, bLooping));
+	}
 	FAnimNotifyContext Context(bLooping);
 	Sequence->GetAnimNotifies(PreviousTime, MoveDelta, Context);
 	NotifyQueue.AddAnimNotifies(Context.ActiveNotifies, EffectiveBlendWeight);
+}
+
+FRootMotionMovementParams UAnimInstance::ConsumeExtractedRootMotion()
+{
+	FRootMotionMovementParams RootMotion = ExtractedRootMotion;
+	ExtractedRootMotion.Clear();
+	return RootMotion;
 }
 
 void UAnimInstance::ClearQueuedAnimEvents()

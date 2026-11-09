@@ -81,7 +81,15 @@ public:
 
 	virtual void RefreshBoneTransforms() override;
 
+	// 인스턴스가 이번 Update에서 모은 Root Motion을 꺼낸다. 컴포넌트 공간 변화량 (UE USkeletalMeshComponent::ConsumeRootMotion)
+	FRootMotionMovementParams ConsumeRootMotion();
+	// 컴포넌트 공간 변화량을 액터에 줄 월드 변화량으로 바꾼다. 메시가 루트가 아니어도 맞는다 (UE ConvertLocalRootMotionToWorld)
+	FTransform ConvertLocalRootMotionToWorld(const FTransform& LocalRootMotion) const;
+
 protected:
+	// UE에서는 UCharacterMovementComponent가 ConsumeRootMotion으로 꺼내 액터를 옮긴다.
+	// 그런 이동 컴포넌트가 없어 Tick에서 메시가 직접 옮긴다. 프리뷰 컴포넌트는 따로 처리하려고 재정의한다
+	virtual void ApplyRootMotionToOwner();
 	virtual void OnRegister() override;
 	virtual void OnUnregister() override;
 	virtual void InitPoseFromMesh() override;
