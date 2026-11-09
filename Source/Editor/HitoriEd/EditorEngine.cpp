@@ -26,6 +26,7 @@
 #include "GameFramework/Actor/LightActorBase.h"
 
 #include "Asset/AssetManager.h"
+#include "Animation/AnimSequence.h"
 #include "Render/SkeletalMesh.h"
 #include "Render/RenderResourceManager.h"
 
@@ -195,13 +196,17 @@ bool UEditorEngine::Init()
 	EditorControlsPanel = EditorUI->AddEditorPanel<FEditorControlsPanel>();
 	ViewportsPanel = EditorUI->AddEditorPanel<FViewportsPanel>();
 	ContentDrawerPanel = EditorUI->AddEditorPanel<FContentDrawerPanel>();
-	SkeletalMeshEditorManager = EditorUI->AddEditorPanel<FSkeletalMeshEditorManager>();
+	PersonaEditorManager = EditorUI->AddEditorPanel<FPersonaEditorManager>();
 	// 콘텐츠 드로어에서 Skeletal Mesh를 더블클릭하면 뷰어로 연다 (언리얼 콘텐츠 브라우저 더블클릭)
 	ContentDrawerPanel->SetOpenAssetCallback([this](URenderAsset* Asset)
 		{
 			if (USkeletalMesh* SkeletalMesh = Cast<USkeletalMesh>(Asset))
 			{
-				SkeletalMeshEditorManager->OpenEditor(SkeletalMesh);
+				PersonaEditorManager->OpenEditor(SkeletalMesh);
+			}
+			else if (UAnimSequence* Sequence = Cast<UAnimSequence>(Asset))
+			{
+				PersonaEditorManager->OpenEditor(Sequence);
 			}
 		});
 	FSequencePanel* SequencePanel = EditorUI->AddEditorPanel<FSequencePanel>();
@@ -314,7 +319,7 @@ bool UEditorEngine::Init()
 	EditorControlsPanel->SetIsPlayingQuery([this]()
 		{ return IsPlaying(); });
 	EditorControlsPanel->SetKeyboardBlockedQuery([this]()
-		{ return SkeletalMeshEditorManager->HasFocusedEditor(); });
+		{ return PersonaEditorManager->HasFocusedEditor(); });
 	EditorControlsPanel->SetGizmo(Gizmo.get());
 	EditorControlsPanel->SetViewportsPanel(ViewportsPanel);
 
@@ -557,7 +562,7 @@ void UEditorEngine::BeginFrame(const float DeltaTime)
 	EditorControlsPanel->FEditorControlsPanel::DeltaTime = DeltaTime;
 
 	// 뷰어에 포커스가 있으면 레벨 액터를 지우지 않는다
-	if (!ImGui::GetIO().WantTextInput && !SkeletalMeshEditorManager->HasFocusedEditor() && FInputSystem::IsKeyPressed(EKeyCode::Delete))
+	if (!ImGui::GetIO().WantTextInput && !PersonaEditorManager->HasFocusedEditor() && FInputSystem::IsKeyPressed(EKeyCode::Delete))
 	{
 		DeleteActor(OutlinerPanel->GetSelectedActor());
 	}
@@ -574,7 +579,7 @@ void UEditorEngine::UpdatePIEInput()
 	}
 
 	// 이름 편집의 취소나 FBX 뷰어 조작까지 PIE 종료로 받지 않는다.
-	if (!ImGui::GetIO().WantTextInput && !SkeletalMeshEditorManager->HasFocusedEditor() && Stop.Shortcut.IsPressedThisFrame())
+	if (!ImGui::GetIO().WantTextInput && !PersonaEditorManager->HasFocusedEditor() && Stop.Shortcut.IsPressedThisFrame())
 	{
 		Stop.TryExecute();
 		return;
@@ -694,7 +699,7 @@ void UEditorEngine::RenderMultipleViewports()
 	}
 
 	// Skeletal Mesh Editor 프리뷰도 같은 그림자 작업에 넣으므로 그림자보다 먼저 준비한다.
-	TArray<const FSkeletalMeshEditor*> Previews;
+	TArray<const FPersonaAssetEditor*> Previews;
 	TArray<FSceneView> PreviewViews;
 	PrepareSkeletalMeshPreviews(Previews, PreviewViews);
 
@@ -784,11 +789,11 @@ void UEditorEngine::RenderMultipleViewports()
 	RenderSkeletalMeshPreviews(Previews, PreviewViews);
 }
 
-void UEditorEngine::PrepareSkeletalMeshPreviews(TArray<const FSkeletalMeshEditor*>& OutPreviews, TArray<FSceneView>& OutViews)
+void UEditorEngine::PrepareSkeletalMeshPreviews(TArray<const FPersonaAssetEditor*>& OutPreviews, TArray<FSceneView>& OutViews)
 {
-	SkeletalMeshEditorManager->GetPreviewsToRender(OutPreviews);
+	PersonaEditorManager->GetPreviewsToRender(OutPreviews);
 
-	for (const FSkeletalMeshEditor* Preview : OutPreviews)
+	for (const FPersonaAssetEditor* Preview : OutPreviews)
 	{
 		// 그림자 작업이 최신 Transform을 쓰도록 먼저 반영한다
 		SceneRenderer->BeginRenderViews(*Preview->GetPreviewWorld());
@@ -808,11 +813,11 @@ void UEditorEngine::PrepareSkeletalMeshPreviews(TArray<const FSkeletalMeshEditor
 	}
 }
 
-void UEditorEngine::RenderSkeletalMeshPreviews(const TArray<const FSkeletalMeshEditor*>& Previews, const TArray<FSceneView>& Views)
+void UEditorEngine::RenderSkeletalMeshPreviews(const TArray<const FPersonaAssetEditor*>& Previews, const TArray<FSceneView>& Views)
 {
 	for (int32 PreviewIndex = 0; PreviewIndex < Previews.Num(); ++PreviewIndex)
 	{
-		const FSkeletalMeshEditor* Preview = Previews[PreviewIndex];
+		const FPersonaAssetEditor* Preview = Previews[PreviewIndex];
 		const FSceneView& View = Views[PreviewIndex];
 		UWorld& PreviewWorld = *Preview->GetPreviewWorld();
 		const FEditorViewportClient& Client = Preview->GetViewportClient();
@@ -836,13 +841,13 @@ void UEditorEngine::RenderSkeletalMeshPreviews(const TArray<const FSkeletalMeshE
 		RenderCommand::EndRenderPass(BoneOverlayInfo);
 
 		// 기즈모는 본보다 위. 레벨 View처럼 깊이를 비워 기즈모끼리만 가리게 한다
-		if (Preview->GetBoneGizmo().HasPivot())
+		if (const FGizmo* PreviewGizmo = Preview->GetGizmo(); PreviewGizmo && PreviewGizmo->HasPivot())
 		{
 			FRenderingInfo GizmoInfo = PreviewRenderingInfo;
 			GizmoInfo.ColorRenderTargets[0].LoadOp = ERenderTargetLoadOp::Load;
 			GizmoInfo.DepthStencil.LoadOp = ERenderTargetLoadOp::Clear;
 			RenderCommand::BeginRenderPass(GizmoInfo);
-			GizmoRenderer->OnRender(Preview->GetBoneGizmo(), View.ViewProjection, Client.GetViewLocation(), Client.IsOrthographic());
+			GizmoRenderer->OnRender(*PreviewGizmo, View.ViewProjection, Client.GetViewLocation(), Client.IsOrthographic());
 			RenderCommand::EndRenderPass(GizmoInfo);
 		}
 	}
@@ -1036,14 +1041,18 @@ void UEditorEngine::RenderOverlayPass(const int32 ViewIndex, UWorld& ViewWorld, 
 						{
 							continue;
 						}
-						const FStaticMeshData& Data = Receiver->GetComponent()->GetRenderMesh()->MeshData;
+						const FStaticMeshData* Data = Receiver->GetComponent()->GetMeshData();
+						if (!Data)
+						{
+							continue;
+						}
 						const FMatrix& LocalToWorld = Receiver->GetLocalToWorld();
 						const int32 IndexCount = std::min(DecalTriangleIndices.Num(), MaxDebugTriangles * 3);
 						for (int32 i = 0; i + 2 < IndexCount; i += 3)
 						{
-							const FVector P0 = LocalToWorld.TransformPosition(Data.Vertices[DecalTriangleIndices[i]].Position);
-							const FVector P1 = LocalToWorld.TransformPosition(Data.Vertices[DecalTriangleIndices[i + 1]].Position);
-							const FVector P2 = LocalToWorld.TransformPosition(Data.Vertices[DecalTriangleIndices[i + 2]].Position);
+							const FVector P0 = LocalToWorld.TransformPosition(Data->Vertices[DecalTriangleIndices[i]].Position);
+							const FVector P1 = LocalToWorld.TransformPosition(Data->Vertices[DecalTriangleIndices[i + 1]].Position);
+							const FVector P2 = LocalToWorld.TransformPosition(Data->Vertices[DecalTriangleIndices[i + 2]].Position);
 							LineBatcher->AddLine(P0, P1, TriangleColor);
 							LineBatcher->AddLine(P1, P2, TriangleColor);
 							LineBatcher->AddLine(P2, P0, TriangleColor);
@@ -1433,7 +1442,7 @@ void UEditorEngine::PreExit()
 {
 	// 프리뷰 월드도 UObject라 FEngineLoop::Exit의 일괄 삭제에 먼저 지워진다.
 	// 그 뒤 EditorUI 소멸 때 에디터가 같은 월드를 다시 지우지 않도록 여기서 먼저 닫는다.
-	SkeletalMeshEditorManager->CloseAllEditors();
+	PersonaEditorManager->CloseAllEditors();
 
 	EndPlayMap();
 	EditorWorld->ClearWorld();

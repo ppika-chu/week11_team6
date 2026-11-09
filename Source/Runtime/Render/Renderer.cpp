@@ -69,7 +69,9 @@ uint64 MakeSortKey(const FRenderPacket& Packet)
 		return (1ull << 63) | static_cast<uint64>(~DistanceBits);
 	}
 
-	return (static_cast<uint64>(Packet.Material->SortID) << 47) | (static_cast<uint64>(Packet.Mesh->SortID) << 31) | (static_cast<uint64>(Packet.LODIndex & 0x3) << 29);
+	return (static_cast<uint64>(Packet.Material->SortID) << 47) 
+		| (static_cast<uint64>(Packet.VertexFactory->Type) << 45) 
+		| (static_cast<uint64>(Packet.VertexFactory->SortID) << 29);
 }
 
 // 불투명 패킷과 같은 규칙의 키 (묶음은 전부 불투명)
@@ -484,7 +486,7 @@ void FRenderer::DrawStaticGroups()
 		if (Group->Material != BoundMaterial)
 		{
 			BoundMaterial = Group->Material;
-			BindMaterial(BoundMaterial);
+			BindMaterial(BoundMaterial, EVertexFactoryType::Local);
 			FRenderPacket MaterialOnly; // 머티리얼 파라미터 갱신은 패킷을 받으므로 머티리얼만 채워 넘긴다
 			MaterialOnly.Material = BoundMaterial;
 			UpdateMaterialParams(MaterialOnly);
@@ -504,10 +506,6 @@ void FRenderer::DrawStaticGroups()
 			RenderCommand::DrawIndexed(Item.IndexCount, Item.StartIndex);
 		}
 	}
-
-	// 뒤따르는 DrawPackets가 처음부터 다시 바인딩하도록 기록을 비운다.
-	LastMesh = nullptr;
-	LastMaterial = nullptr;
 }
 
 void FRenderer::RenderQueueSorting(FRenderQueue& InQueue, const FMatrix& ViewProjection,
@@ -537,7 +535,7 @@ void FRenderer::RenderQueueSorting(FRenderQueue& InQueue, const FViewConstants& 
 		for (uint32 i = 0; i < RenderPackets.Num(); ++i)
 		{
 			const FRenderPacket& P = RenderPackets[i];
-			if (!P.Mesh || !P.Material)
+			if (!P.VertexFactory || !P.VertexFactory->VertexBuffer || !P.IndexBuffer || !P.Material)
 			{
 				continue;
 			}
@@ -578,10 +576,6 @@ void FRenderer::RenderDepth(const FMatrix& ViewProjection)
 	DrawStaticGroups();
 	DrawPackets(0, FirstTranslucentIndex, ViewProjection);
 	bDepthOnly = false;
-
-	// 본 패스가 머티리얼을 처음부터 다시 바인딩해 PS가 돌아오게 한다.
-	LastMesh = nullptr;
-	LastMaterial = nullptr;
 }
 
 namespace ShadowCachePrivate
@@ -955,45 +949,53 @@ void FRenderer::DrawPackets(uint32 Begin, uint32 End, const FMatrix& ViewProject
 {
 	SCOPE_CYCLE_COUNTER(STAT_DrawRenderPackets);
 
-	LastMesh = nullptr;
-	LastMaterial = nullptr;
-	uint8 LastLODIndex = 0;
-
 	RenderCommand::BindConstantBuffer(0, ViewCB.get(), EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel);
 
+	UMaterial* BoundMaterial = nullptr;
+	const FVertexFactory* BoundVertexFactory = nullptr;
+	EVertexFactoryType BoundVertexFactoryType = EVertexFactoryType::Count;
+	FIndexBuffer* BoundIndexBuffer = nullptr;
 
 	for (uint32 k = Begin; k < End; ++k) // k = 정렬된 위치
 	{
-		const uint32 PacketIndex = SortEntries[k].PacketIndex;
-		const FRenderPacket& RenderPacket = RenderPackets[PacketIndex];
-		if (RenderPacket.Mesh != LastMesh || RenderPacket.LODIndex != LastLODIndex)
+		const FRenderPacket& Packet = RenderPackets[SortEntries[k].PacketIndex];
+		const FVertexFactory* VertexFactory = Packet.VertexFactory;
+
+		if (VertexFactory != BoundVertexFactory)
 		{
-			RenderCommand::BindMesh(RenderPacket.Mesh, RenderPacket.LODIndex);
+			RenderCommand::BindVertexFactory(*VertexFactory);
 		}
-		if (RenderPacket.Material != LastMaterial)
+		if (Packet.IndexBuffer != BoundIndexBuffer)
 		{
-			BindMaterial(RenderPacket.Material);
+			RenderCommand::BindIndexBuffer(Packet.IndexBuffer);
 		}
-		if (RenderPacket.Material != LastMaterial || RenderPacket.MaterialParamData)
+
+		if (Packet.Material != BoundMaterial || VertexFactory->Type != BoundVertexFactoryType)
 		{
-			UpdateMaterialParams(RenderPacket);
+			BindMaterial(Packet.Material, VertexFactory->Type);
 		}
-		if (bUsePerObjectSlots && RenderPacket.Slot != InvalidObjectSlot)
+		if (Packet.Material != BoundMaterial || Packet.MaterialParamData)
 		{
-			RenderCommand::BindConstantBufferRange(2, PerObjectSlotCB.get(), RenderPacket.Slot * PerObjectSlotConstants, PerObjectSlotConstants, EShaderBindFlagBits::Vertex);
+			UpdateMaterialParams(Packet);
+		}
+
+		if (bUsePerObjectSlots && Packet.Slot != InvalidObjectSlot)
+		{
+			RenderCommand::BindConstantBufferRange(2, PerObjectSlotCB.get(), Packet.Slot * PerObjectSlotConstants, PerObjectSlotConstants, EShaderBindFlagBits::Vertex);
 		}
 		else
 		{
 			RenderCommand::BindConstantBuffer(2, PerObjectCB.get(), EShaderBindFlagBits::Vertex);
-			UpdatePerObjectConstants(RenderPacket, ViewProjection);
+			UpdatePerObjectConstants(Packet, ViewProjection);
 		}
 
-		RenderCommand::DrawIndexed(
-			RenderPacket.IndexCount ? RenderPacket.IndexCount : RenderPacket.Mesh->GetIndexBuffer(RenderPacket.LODIndex)->GetIndexCount(),
-			RenderPacket.StartIndex);
-		LastMaterial = RenderPacket.Material;
-		LastMesh = RenderPacket.Mesh;
-		LastLODIndex = RenderPacket.LODIndex;
+		const uint32 IndexCount = Packet.IndexCount ? Packet.IndexCount : Packet.IndexBuffer->GetIndexCount();
+		RenderCommand::DrawIndexed(IndexCount, Packet.StartIndex);
+
+		BoundMaterial = Packet.Material;
+		BoundVertexFactory = VertexFactory;
+		BoundVertexFactoryType = VertexFactory->Type;
+		BoundIndexBuffer = Packet.IndexBuffer;
 	}
 }
 
@@ -1004,9 +1006,9 @@ FOcclusionMeasureResult FRenderer::MeasureOpaqueOcclusion(const FMatrix& ViewPro
 	// 불투명 드로우를 두 경로(스태틱 묶음, 일반 패킷)에서 한 목록으로 모은다. 그린 순서와 같게 묶음 먼저.
 	struct FMeasureDraw
 	{
-		UStaticMesh* Mesh;
+		const FVertexFactory* VertexFactory;
+		FIndexBuffer* IndexBuffer;
 		UMaterial* Material;
-		uint8 LODIndex;
 		uint32 Slot;
 		uint32 StartIndex;
 		uint32 IndexCount;
@@ -1020,18 +1022,38 @@ FOcclusionMeasureResult FRenderer::MeasureOpaqueOcclusion(const FMatrix& ViewPro
 	{
 		for (const FStaticDrawItem& Item : Group->Items)
 		{
-			Draws.push_back({ Group->Mesh, Group->Material, Group->LODIndex, Item.Slot, Item.StartIndex, Item.IndexCount,
-				&Item.Proxy->GetLocalToWorld(), Item.Proxy, Item.bOccludedByGpu != 0, nullptr });
+			Draws.push_back({
+				.VertexFactory = &Group->Mesh->GetVertexFactory(Group->LODIndex),
+				.IndexBuffer = Group->Mesh->GetIndexBuffer(Group->LODIndex),
+				.Material = Group->Material,
+				.Slot = Item.Slot,
+				.StartIndex = Item.StartIndex,
+				.IndexCount = Item.IndexCount,
+				.World = &Item.Proxy->GetLocalToWorld(),
+				.ObjectKey = static_cast<const void*>(Item.Proxy),
+				.bOccludedByGpu = Item.bOccludedByGpu != 0,
+				.Packet = nullptr
+			});
 		}
 	}
 	for (uint32 k = 0; k < FirstTranslucentIndex; ++k)
 	{
 		const FRenderPacket& Packet = RenderPackets[SortEntries[k].PacketIndex];
-		const uint32 IndexCount = Packet.IndexCount ? Packet.IndexCount : Packet.Mesh->GetIndexBuffer(Packet.LODIndex)->GetIndexCount();
+		const uint32 IndexCount = Packet.IndexCount ? Packet.IndexCount : Packet.IndexBuffer->GetIndexCount();
 		// 프록시가 없는 패킷(빌보드 등)은 패킷 자체를 한 물체로 센다.
 		const void* Key = Packet.Proxy ? static_cast<const void*>(Packet.Proxy) : static_cast<const void*>(&Packet);
-		Draws.push_back({ Packet.Mesh, Packet.Material, Packet.LODIndex, Packet.Slot, Packet.StartIndex, IndexCount,
-			&GetPacketWorld(Packet), Key, Packet.bOccludedByGpu, &Packet });
+		Draws.push_back({
+			.VertexFactory = Packet.VertexFactory,
+			.IndexBuffer = Packet.IndexBuffer,
+			.Material = Packet.Material,
+			.Slot = Packet.Slot,
+			.StartIndex = Packet.StartIndex,
+			.IndexCount = IndexCount,
+			.World = Packet.Proxy ? &Packet.Proxy->GetLocalToWorld() : nullptr,
+			.ObjectKey = Key,
+			.bOccludedByGpu = Packet.bOccludedByGpu != 0,
+			.Packet = &Packet
+		});
 	}
 
 	const uint32 Count = static_cast<uint32>(Draws.size());
@@ -1076,22 +1098,27 @@ FOcclusionMeasureResult FRenderer::MeasureOpaqueOcclusion(const FMatrix& ViewPro
 		RenderCommand::BindConstantBuffer(2, PerObjectCB.get(), EShaderBindFlagBits::Vertex);
 	}
 
-	UStaticMesh* BoundMesh = nullptr;
+	const FVertexFactory* BoundVertexFactory = nullptr;
+	EVertexFactoryType BoundVertexFactoryType = EVertexFactoryType::Count;
+	FIndexBuffer* BoundIndexBuffer = nullptr;
 	UMaterial* BoundMaterial = nullptr;
-	uint8 BoundLOD = 0;
 
 	// 1) 드로우마다 쿼리를 걸고 다시 그린다. 본 패스와 같은 바인딩(칸 또는 PerObjectCB)을 쓴다.
 	for (uint32 Index = 0; Index < Count; ++Index)
 	{
 		const FMeasureDraw& Draw = Draws[Index];
 
-		if (Draw.Mesh != BoundMesh || Draw.LODIndex != BoundLOD)
+		if (Draw.VertexFactory != BoundVertexFactory)
 		{
-			RenderCommand::BindMesh(Draw.Mesh, Draw.LODIndex);
+			RenderCommand::BindVertexFactory(*Draw.VertexFactory);
 		}
-		if (Draw.Material != BoundMaterial)
+		if (Draw.IndexBuffer != BoundIndexBuffer)
 		{
-			BindMaterial(Draw.Material);
+			RenderCommand::BindIndexBuffer(Draw.IndexBuffer);
+		}
+		if (Draw.Material != BoundMaterial || Draw.VertexFactory->Type != BoundVertexFactoryType)
+		{
+			BindMaterial(Draw.Material, Draw.VertexFactory->Type);
 			// BindMaterial이 바꾼 상태를 측정용으로 덮어쓴다.
 			RenderCommand::SetBlendState(EBlendState::NoColorWrite);
 			Context->OMSetDepthStencilState(DepthLessEqualReadOnly.Get(), 0);
@@ -1117,9 +1144,10 @@ FOcclusionMeasureResult FRenderer::MeasureOpaqueOcclusion(const FMatrix& ViewPro
 		RenderCommand::DrawIndexed(Draw.IndexCount, Draw.StartIndex);
 		Context->End(Query);
 
-		BoundMesh = Draw.Mesh;
+		BoundVertexFactory = Draw.VertexFactory;
+		BoundVertexFactoryType = Draw.VertexFactory->Type;
+		BoundIndexBuffer = Draw.IndexBuffer;
 		BoundMaterial = Draw.Material;
-		BoundLOD = Draw.LODIndex;
 	}
 
 	// 2) 결과를 기다려 모은다. 한 물체가 Section 여러 개로 나뉘면 하나라도 보이면 보이는 것으로 친다.
@@ -1212,13 +1240,13 @@ void FRenderer::EndObjectConstants()
 }
 
 // Material마다 Shader/Texture/Sampler/State 꽂기
-void FRenderer::BindMaterial(UMaterial* Material)
+void FRenderer::BindMaterial(UMaterial* Material, EVertexFactoryType VertexFactoryType)
 {
 	FShaderProgram* Program{ Material->Shader };
 	if (FRenderResourceManager::IsUberLitProgram(Program))
 	{
 		const EViewMode MaterialMode = ResolveMaterialViewMode(CurrentViewMode, Material->ShadingModel);
-		if (FShaderProgram * Variant{ FRenderResourceManager::GetUberLitProgram(MaterialMode) })
+		if (FShaderProgram* Variant = FRenderResourceManager::GetUberLitProgram(VertexFactoryType, MaterialMode))
 		{
 			Program = Variant;
 		}
@@ -1327,8 +1355,6 @@ void FRenderer::SetViewMode(EViewMode InViewMode)
 		return;
 	}
 	CurrentViewMode = InViewMode;
-	// 같은 머티리얼이라도 셰이더가 바뀌므로 다음 드로우에서 다시 바인딩하게 한다.
-	LastMaterial = nullptr;
 }
 
 void FRenderer::SetLighting(FLightingConstants& LightingConstants, const TArray<FLightRenderParameters>& InLocalLights)

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "RenderPacket.h"
+#include "VertexFactory.h"
 #include "Math/Matrix.h"
 #include "Math/Vector4.h"
 #include "Render/Buffer.h"
@@ -15,21 +17,19 @@ struct FFrustumPlanes;
 // VS(행렬)와 PS(색·알파)가 같은 버퍼를 함께 쓴다.
 struct FDecalConstants
 {
-	FMatrix World;          // 받는 메시의 월드 행렬
-	FMatrix WorldInverseTranspose;
 	FMatrix DecalVP;        // UDecalComponent::GetDecalViewProjection()
 	FVector4 DecalColor = FVector4(1.0f, 1.0f, 1.0f, 1.0f); // 선형 머티리얼 DiffuseOrFactor × 선형 컴포넌트 DecalColor
 	float FadeAlpha = 1.0f;
 	float bAdditive = 0.0f; // 1이면 셰이더가 색에 알파를 미리 곱한다 (One/One 블렌드)
 	float Shininess = 32.0f;
-	uint32 ReceiveShadow = 0;
+	float Padding = 0.0f;
 	FVector SpecularColor = FVector(1, 1, 1); // 선형 반사광 색상
 	float SpecularFactor = 1.f; // 반사광 강도 계수
 	FVector EmissiveColor = FVector(0, 0, 0); // 선형 자체 발광 색상
 	float EmissiveFactor = 1.f; // 자체 발광 강도 계수
 
 };
-static_assert(sizeof(FDecalConstants) == 64 * 3 + 16 + 16 + 32, "DecalShader.hlsl cbuffer DecalConstants와 크기가 같아야 한다");
+static_assert(sizeof(FDecalConstants) == 64 + 16 * 4, "DecalShader.hlsl cbuffer DecalConstants와 크기가 같아야 한다");
 
 // Decal Pass. 불투명을 그린 뒤 반투명을 그리기 전에, 데칼 상자와 겹치는 메시를 데칼 셰이더로 한 번 더 그린다 (Multipass).
 // 깊이는 읽기만 하고(LESS_EQUAL, 쓰기 Off) 색은 Alpha Blend로 섞는다.
@@ -53,9 +53,11 @@ private:
 	void EnsureTriangleIndexCapacity(uint32 Count);
 
 	// 뷰 모드별 셰이더 변형. Gouraud는 픽셀 단위로 조명하는 Lambert로 대신한다.
-	FShaderProgram* Shaders[static_cast<int32>(EViewMode::Count)]{};
+	FShaderProgram* Shaders[static_cast<int32>(EVertexFactoryType::Count)][static_cast<int32>(EViewMode::Count)]{};
 	FPipelineState PipelineState;
 	TUniquePtr<FConstantBuffer> ConstantBuffer;
+	TUniquePtr<FConstantBuffer> PrimitiveConstantBuffer;
+	FRenderQueue ReceiverPackets;
 
 	TUniquePtr<FIndexBuffer> TriangleIndexBuffer;
 	uint32 TriangleIndexCapacity = 0;

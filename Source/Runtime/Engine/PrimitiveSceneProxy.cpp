@@ -24,6 +24,31 @@ void FPrimitiveSceneProxy::PrepareDynamicData()
 	bDynamicDataPrepared = true;
 }
 
+void FPrimitiveSceneProxy::GetMeshPackets(FRenderQueue& Out, uint32 LODIndex) const
+{
+	if (!Mesh || !RenderState)
+	{
+		return;
+	}
+	if (LODIndex >= RenderState->LODCount)
+	{
+		LODIndex = 0;
+	}
+	const FCachedMeshLOD& LOD = RenderState->LODs[LODIndex];
+	for (uint32 I = 0; I < LOD.NumSections; ++I)
+	{
+		const FCachedMeshSection& Section = RenderState->Sections[LOD.FirstSection + I];
+		FRenderPacket& Packet = Out.AddDefaulted_GetRef();
+		Packet.Proxy = this;
+		Packet.VertexFactory = &Mesh->GetVertexFactory(LODIndex);
+		Packet.IndexBuffer = Mesh->GetIndexBuffer(LODIndex);
+		Packet.Material = Section.Material;
+		Packet.StartIndex = Section.StartIndex;
+		Packet.IndexCount = Section.IndexCount;
+		Packet.LODIndex = static_cast<uint8>(LODIndex);
+	}
+}
+
 // 기본 Primitive는 동적 스냅샷이 필요하지 않다.
 void FPrimitiveSceneProxy::UpdateDynamicData()
 {
@@ -100,17 +125,17 @@ void FPrimitiveSceneProxy::UpdateRenderState()
 			Scene->MarkDirty(this);
 		}
 	}
-	if (!Mesh)
+	if (Mesh)
 	{
-		return;
+		std::vector<UMaterial*> Materials;
+		Materials.reserve(Mesh->MeshData.MaterialSlots.Num());
+		for (int32 Slot = 0; Slot < Mesh->MeshData.MaterialSlots.Num(); ++Slot)
+		{
+			Materials.push_back(Component->GetMaterial(Slot));
+		}
+		RenderState = Mesh->GetRenderState(Materials);
 	}
-	std::vector<UMaterial*> Materials;
-	Materials.reserve(Mesh->MeshData.MaterialSlots.Num());
-	for (uint32 Slot = 0; Slot < static_cast<uint32>(Mesh->MeshData.MaterialSlots.Num()); ++Slot)
-	{
-		Materials.push_back(Component->GetMaterial(Slot));
-	}
-	RenderState = Mesh->GetRenderState(Materials);
+	OnRenderStateUpdated();
 }
 
 void FPrimitiveSceneProxy::AddReferencedMaterials(TSet<UMaterial*>& OutMaterials) const

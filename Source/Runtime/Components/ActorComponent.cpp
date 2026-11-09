@@ -32,6 +32,19 @@ void UActorComponent::Serialize(FStructuredArchive::FRecord Record)
 	}
 }
 
+void UActorComponent::RecreateRenderState()
+{
+	if (!IsRenderStateCreated())
+	{
+		return;
+	}
+	DestroyRenderState();
+	if (ShouldCreateRenderState())
+	{
+		CreateRenderState();
+	}
+}
+
 void UActorComponent::RegisterComponent()
 {
 	AActor* MyOwner = GetOwner();
@@ -56,6 +69,12 @@ void UActorComponent::RegisterComponentWithWorld(UWorld* InWorld)
 
 	WorldPrivate = InWorld;
 	ExecuteRegisterEvents();
+
+	// 게임 월드는 BeginPlay 때 Tick을 등록한다. 프리뷰 월드는 BeginPlay가 없으므로 여기서 등록한다.
+	if (InWorld->GetWorldType() == EWorldType::EditorPreview)
+	{
+		PrimaryComponentTick.RegisterTickFunction(InWorld->GetTickTaskManager());
+	}
 }
 
 void UActorComponent::UnregisterComponent()
@@ -63,6 +82,10 @@ void UActorComponent::UnregisterComponent()
 	if (!IsRegistered())
 	{
 		return;
+	}
+	if (WorldPrivate && WorldPrivate->GetWorldType() == EWorldType::EditorPreview)
+	{
+		PrimaryComponentTick.UnRegisterTickFunction();
 	}
 	ExecuteUnregisterEvents();
 	WorldPrivate = nullptr;

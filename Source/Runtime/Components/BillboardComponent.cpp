@@ -121,7 +121,8 @@ void UBillboardComponent::SubmitToRenderQueue(FRenderQueue& RenderQueue, const F
 	// 에디터 아이콘은 Overlay 패스(톤 매핑 이후 LDR)에, 일반 빌보드는 HDR 씬에 그려진다.
 	IconParams.DecodeSRGB = bEditorIcon ? 0.0f : 1.0f;
 	FRenderPacket Packet;
-	Packet.Mesh = QuadMesh;
+	Packet.VertexFactory = &QuadMesh->GetVertexFactory(0);
+	Packet.IndexBuffer = QuadMesh->GetIndexBuffer(0);
 	Packet.Material = Material;
 	Packet.Model = RenderQueue.StoreWorldMatrix(BillboardWorldMatrix);
 	Packet.MaterialParamData = &IconParams;

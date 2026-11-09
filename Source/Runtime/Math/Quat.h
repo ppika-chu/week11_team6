@@ -28,6 +28,9 @@ struct FQuat
 
 	/* Function */
 	FQuat operator*(const FQuat& Other) const;
+	FQuat operator*(float Scale) const;
+	FQuat operator+(const FQuat& Other) const;
+	float operator|(const FQuat& Other) const;
 	FQuat Conjugate() const;
 	FQuat UnitInverse() const;
 	FQuat Inverse() const;
@@ -45,4 +48,5 @@ struct FQuat
 	static FQuat Identity();
 	static FQuat MakeFromAxisAngle(const FVector& Axis, float AngleRadians);
 	static FQuat MakeFromEuler(float Roll, float Pitch, float Yaw);
+	static FQuat FastLerp(const FQuat& A, const FQuat& B, float Alpha);
 };

@@ -60,6 +60,22 @@ FQuat FQuat::operator*(const FQuat& Other) const
 	return FQuat(SI, SJ, SK, SR);
 }
 
+FQuat FQuat::operator*(float Scale) const
+{
+	return FQuat(X * Scale, Y * Scale, Z * Scale, W * Scale);
+}
+
+FQuat FQuat::operator+(const FQuat& Other) const
+{
+	return FQuat(X + Other.X, Y + Other.Y, Z + Other.Z, W + Other.W);
+}
+
+// 내적
+float FQuat::operator|(const FQuat& Other) const
+{
+	return X * Other.X + Y * Other.Y + Z * Other.Z + W * Other.W;
+}
+
 // 켤레 복소수
 FQuat FQuat::Conjugate() const
 {
@@ -199,6 +215,14 @@ FVector FQuat::GetUpVector() const
 FQuat FQuat::Identity()
 {
 	return FQuat(0, 0, 0, 1.0f);
+}
+
+// 결과는 정규화되어 있지 않다. 사용하는 쪽에서 Normalized()를 호출한다.
+FQuat FQuat::FastLerp(const FQuat& A, const FQuat& B, float Alpha)
+{
+	// 내적이 음수면 부호를 뒤집어 가까운 쪽으로 섞는다.
+	const float Bias = (A | B) >= 0.0f ? 1.0f : -1.0f;
+	return (B * Alpha) + (A * (Bias * (1.0f - Alpha)));
 }
 
 FQuat FQuat::MakeFromAxisAngle(const FVector& Axis, float AngleRadians)

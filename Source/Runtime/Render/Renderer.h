@@ -335,7 +335,7 @@ public:
 private:
 	void DrawPackets(uint32 Begin, uint32 End, const FMatrix& ViewProjection);
 	void DrawStaticGroups();
-	void BindMaterial(UMaterial* Material);
+	void BindMaterial(UMaterial* Material, EVertexFactoryType VertexFactoryType);
 	void UpdateMaterialParams(const FRenderPacket& RenderPacket);
 	void UpdatePerObjectConstants(const FRenderPacket& RenderPacket, const FMatrix& ViewProjection);
 	void UpdatePerObjectConstants(const FMatrix& World, bool bReceiveShadow);
@@ -400,8 +400,6 @@ private:
 	uint32 PerObjectSlotCapacity = 0;
 	bool bUsePerObjectSlots = false;
 	bool bObjectConstantsPrepared = false;
-	UMaterial* LastMaterial;
-	UStaticMesh* LastMesh;
 
 	// MeasureOpaqueOcclusion 전용. 처음 측정할 때 만들고 이후 재사용한다.
 	TArray<ComPtr<ID3D11Query>> OcclusionQueries;

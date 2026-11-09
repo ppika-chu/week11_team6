@@ -8,6 +8,7 @@
 #include <shobjidl.h>
 #include <cstring>
 #include <thread>
+#include <algorithm>
 
 namespace
 {
@@ -404,6 +405,30 @@ void FEditorUI::DrawFbxImportDialog()
 		if (ImGui::IsItemHovered()) ImGui::SetTooltip("On: include placement outside the rig in geometry and bind transforms.\nOff: remove the root bone parent's global bind transform; retain the root bone's own transform.");
 		ImGui::Checkbox("Combine Meshes", &FbxOptions.bCombineSkeletalMeshes);
 		if (ImGui::IsItemHovered()) ImGui::SetTooltip("Combine meshes using the same source rig root. An LOD group remains one asset when disabled.");
+		ImGui::Checkbox("Use T0 As Ref Pose", &FbxOptions.bUseT0AsRefPose);
+		if (ImGui::IsItemHovered()) ImGui::SetTooltip("On: use the time 0 pose as the reference pose.\nAn invalid FBX BindPose always uses time 0.");
+		ImGui::PopID();
+
+		ImGui::SeparatorText("Animation");
+		ImGui::PushID("AnimationFbx");
+		ImGui::Checkbox("Import Animations", &FbxOptions.bImportAnimations);
+		ImGui::BeginDisabled(!FbxOptions.bImportAnimations);
+		int AnimationRange = static_cast<int>(FbxOptions.AnimationRange);
+		if (ImGui::Combo("Animation Length", &AnimationRange, "Source Timeline\0Animated Time\0Set Range\0"))
+			FbxOptions.AnimationRange = static_cast<EInterchangeAnimationRange>(AnimationRange);
+		ImGui::BeginDisabled(FbxOptions.AnimationRange != EInterchangeAnimationRange::SetRange);
+		int FrameImportRange[2]{ FbxOptions.FrameImportRangeMin, FbxOptions.FrameImportRangeMax };
+		if (ImGui::InputInt2("Frame Import Range", FrameImportRange))
+		{
+			FbxOptions.FrameImportRangeMin = std::max(FrameImportRange[0], 0);
+			FbxOptions.FrameImportRangeMax = std::max(FrameImportRange[1], 0);
+		}
+		ImGui::EndDisabled();
+		int FrameAlignment = static_cast<int>(FbxOptions.FrameAlignment);
+		if (ImGui::Combo("Frame Alignment", &FrameAlignment, "None\0Snap To Floor\0Snap To Closest Frame Boundary\0Snap To Ceiling\0"))
+			FbxOptions.FrameAlignment = static_cast<EInterchangeFrameAlignment>(FrameAlignment);
+		if (ImGui::IsItemHovered()) ImGui::SetTooltip("None: clips that do not end on a frame border are not imported.");
+		ImGui::EndDisabled();
 		ImGui::PopID();
 
 		if (!FFbxImporter::IsAvailable()) ImGui::TextWrapped("Run SlnGenerator.bat and rebuild the editor to enable FBX import.");

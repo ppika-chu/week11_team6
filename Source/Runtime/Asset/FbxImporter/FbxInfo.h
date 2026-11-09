@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Animation/AnimDataModel.h"
 #include "Animation/ReferenceSkeleton.h"
 #include "Render/SkeletalMesh.h"
 #include "Render/ImageLoader.h"
@@ -14,6 +15,22 @@ enum class EFbxAssetType : uint32
 	Skeleton,
 	Material,
 	Texture2D,
+	AnimSequence,
+};
+
+enum class EInterchangeAnimationRange : int32
+{
+	Timeline, // FBX에 기록된 클립 구간
+	Animated, // 키가 실제로 있는 구간
+	SetRange, // FrameImportRangeMin, FrameImportRangeMax로 지정한 프레임 구간
+};
+
+enum class EInterchangeFrameAlignment : int32
+{
+	None, // 프레임 경계에 맞지 않는 클립은 임포트하지 않는다.
+	SnapToFloor,
+	SnapToClosest,
+	SnapToCeiling,
 };
 
 struct FFbxImportOptions
@@ -22,6 +39,12 @@ struct FFbxImportOptions
 	bool bCombineStaticMeshes = false;
 	bool bBakeSkeletalMeshes = true;
 	bool bCombineSkeletalMeshes = true;
+	bool bUseT0AsRefPose = false; // 켜면 바인드 포즈가 유효해도 0초 자세를 기본 자세로 쓴다.
+	bool bImportAnimations = true;
+	EInterchangeAnimationRange AnimationRange = EInterchangeAnimationRange::Timeline;
+	int32 FrameImportRangeMin = 0;
+	int32 FrameImportRangeMax = 0;
+	EInterchangeFrameAlignment FrameAlignment = EInterchangeFrameAlignment::None;
 };
 
 struct FFbxMaterialData
@@ -45,6 +68,16 @@ struct FFbxMeshLODData
 	FSkinWeightData SkinWeights;
 };
 
+// FBX 클립 하나를 본별 키로 바꾼 결과다. UAnimDataModel을 만들기 전 Cook 단계에서 쓴다.
+struct FFbxAnimationData
+{
+	FString Name;
+	float FrameRate = 30.0f; // 초당 키 수
+	int32 NumberOfFrames = 0; // 키 사이 구간 수
+	int32 NumberOfKeys = 0;
+	TArray<FBoneAnimationTrack> Tracks;
+};
+
 // Cook 결과다. SDK 포인터/GPU 리소스는 포함하지 않는다. 한 항목이 한 .fbxbin이다.
 struct FFbxAssetData
 {
@@ -60,6 +93,7 @@ struct FFbxAssetData
 	FReferenceSkeleton RefSkeleton;
 	FFbxMaterialData Material;
 	FImageData Texture;
+	FFbxAnimationData Animation;
 
 	bool Validate(FString& Error) const;
 };

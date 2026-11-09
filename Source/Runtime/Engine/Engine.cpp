@@ -82,7 +82,7 @@ void FWorldContext::SetCurrentWorld(UWorld* World)
 FGameViewportInfo UEngine::GetGameViewportInfo(const UWorld* InWorld) const
 {
 	FGameViewportInfo Info;
-	if (!InWorld || InWorld->GetWorldType() == EWorldType::Editor)
+	if (!InWorld || InWorld->GetWorldType() == EWorldType::Editor || InWorld->GetWorldType() == EWorldType::EditorPreview)
 	{
 		return Info;
 	}

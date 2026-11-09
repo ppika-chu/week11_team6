@@ -27,7 +27,8 @@ bool FBillboardSceneProxy::GatherDynamicRenderPackets(FRenderQueue& RenderQueue,
 
 	FRenderQueue& Target = bEditorIcon && IconQueue ? *IconQueue : RenderQueue;
 	FRenderPacket Packet;
-	Packet.Mesh = QuadMesh;
+	Packet.VertexFactory = &QuadMesh->GetVertexFactory(0);
+	Packet.IndexBuffer = QuadMesh->GetIndexBuffer(0);
 	Packet.Material = Material;
 	Packet.Model = Target.StoreWorldMatrix(BuildBillboardMatrix(WorldPosition, Size.X, Size.Y, ViewContext));
 	Packet.MaterialParamData = &Parameters;

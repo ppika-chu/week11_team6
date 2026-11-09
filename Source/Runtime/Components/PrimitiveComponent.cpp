@@ -215,6 +215,14 @@ FPrimitiveSceneProxy* UPrimitiveComponent::CreateSceneProxy()
 	return new FPrimitiveSceneProxy(this);
 }
 
+void UPrimitiveComponent::MarkRenderDynamicDataDirty()
+{
+	if (SceneProxy)
+	{
+		SceneProxy->MarkRenderDynamicDataDirty();
+	}
+}
+
 void UPrimitiveComponent::CreateRenderState()
 {
 	Super::CreateRenderState();

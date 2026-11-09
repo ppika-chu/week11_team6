@@ -63,6 +63,13 @@ void UStaticMesh::RebuildRenderData()
 	LocalLODSphere.RadiusSquared = std::nextafter(
 		static_cast<float>(RadiusSquared * (1.0 + 2e-5)), std::numeric_limits<float>::infinity());
 	RenderStates.clear();
+
+	for (uint32 LOD = 0; LOD < GetLODCount(); ++LOD)
+	{
+		VertexFactories[LOD].Type = EVertexFactoryType::Local;
+		VertexFactories[LOD].VertexBuffer = GetVertexBuffer(LOD);
+	}
+
 	for (FPrimitiveSceneProxy* Proxy : RenderProxies)
 	{
 		Proxy->OnMeshRenderDataChanged();

@@ -8,6 +8,7 @@
 #include "Texture2D.h"
 #include "TextureCube.h"
 #include "RenderingInfo.h"
+#include "VertexFactory.h"
 
 void RenderCommand::Init(FRenderDevice* InRenderDevice)
 {
@@ -118,6 +119,16 @@ void RenderCommand::BindMesh(UStaticMesh* Mesh, uint32 LODIndex)
 {
 	BindVertexBuffer(Mesh->GetVertexBuffer(LODIndex));
 	BindIndexBuffer(Mesh->GetIndexBuffer(LODIndex));
+}
+
+void RenderCommand::BindVertexFactory(const FVertexFactory& VF)
+{
+	BindVertexBuffer(VF.VertexBuffer);
+	if (VF.Type == EVertexFactoryType::GPUSkin)
+	{
+		BindShaderResource(GPUSkinVF::BoneMatricesSlot, VF.BoneMatrices, EShaderBindFlagBits::Vertex);
+		BindShaderResource(GPUSkinVF::SkinWeightsSlot, VF.SkinWeights, EShaderBindFlagBits::Vertex);
+	}
 }
 
 void RenderCommand::Draw(uint32 VertexCount, uint32 StartIndexLocation)

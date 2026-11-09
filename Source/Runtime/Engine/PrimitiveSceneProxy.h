@@ -30,6 +30,8 @@ public:
 	virtual void AddReferencedMaterials(TSet<UMaterial*>& OutMaterials) const;
 	void OnMeshRenderDataChanged();
 	void OnMeshDestroyed();
+
+	void MarkRenderDynamicDataDirty() { bRenderDynamicDataDirty = true; }
 	// 정점이 CPU에서 바뀌는 메시(스키닝 등)가 그림자 캐시를 다시 그리게 한다.
 	void MarkShadowDirty();
 
@@ -37,10 +39,15 @@ public:
 	void InvalidateDynamicData() { bDynamicDataPrepared = false; }
 	void PrepareDynamicData();
 
+	virtual void GetMeshPackets(FRenderQueue& Out, uint32 LODIndex) const;
+
 	// 기본 Proxy는 기존 Component 제출 경로를 사용한다.
 	virtual bool GatherDynamicRenderPackets(FRenderQueue& RenderQueue, FRenderQueue* IconQueue,
 		const FVector& CameraLocation, FBillboardMatrixBuilder BuildBillboardMatrix, const void* ViewContext,
 		TArray<int32>& SortedParticleIndices, TArray<float>& ParticleDistancesSquared) const;
+
+	virtual bool HasMeshPackets() const { return Mesh != nullptr; }
+	virtual bool HasDeformableMesh() const { return false; }
 
 	UPrimitiveComponent* GetComponent() const { return Component; }
 	const FAABB& GetBounds() const { return Bounds; }
@@ -62,6 +69,8 @@ public:
 protected:
 	// 파생 Proxy만 자신의 렌더 스냅샷을 갱신한다.
 	virtual void UpdateDynamicData();
+	virtual void OnRenderStateUpdated() {}
+	bool bRenderDynamicDataDirty = true;
 
 private:
 	friend class FScene;

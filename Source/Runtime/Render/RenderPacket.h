@@ -13,7 +13,8 @@ struct FRenderPacket
 {
 	const FPrimitiveSceneProxy* Proxy = nullptr;
 	const FMatrix* Model = nullptr;
-	UStaticMesh* Mesh = nullptr;
+	const FVertexFactory* VertexFactory = nullptr;
+	FIndexBuffer* IndexBuffer = nullptr;
 	UMaterial* Material = nullptr;
 	const void* MaterialParamData = nullptr;
 	float CameraToParticleDistance = 0.0f;

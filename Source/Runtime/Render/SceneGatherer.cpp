@@ -64,21 +64,22 @@ void FSceneGatherer::GatherRenderPackets(FScene& Scene, FRenderQueue& RenderQueu
 		// BVH 방문은 호출 스레드에서 동기 실행하므로 에디터 Arrow도 여기서 제출한다.
 		const auto Visit = [&](FPrimitiveSceneProxy* Proxy)
 		{
+			UPrimitiveComponent* Component = Proxy->GetComponent();
+			if (!bDrawSkeletalMesh && Cast<USkinnedMeshComponent>(Component))
+			{
+				return;
+			}
+
 			if (ArrowQueue && Proxy->GetMesh())
 			{
-				UStaticMeshComponent* StaticComponent = Cast<UStaticMeshComponent>(Proxy->GetComponent());
+				UStaticMeshComponent* StaticComponent = Cast<UStaticMeshComponent>(Component);
 				if (StaticComponent && StaticComponent->IsEditorIcon())
 				{
 					// TODO: 모든 프리미티브를 공통 큐로 수집하고 렌더 패스로 분류하도록 통합한 뒤 임시 ArrowQueue 분기를 제거한다.
 					if (Proxy->IsVisible())
 					{
-						StaticComponent->SubmitToRenderQueue(*ArrowQueue, 0);
+						Proxy->GetMeshPackets(*ArrowQueue, 0);
 					}
-					return;
-				}
-
-				if (!bDrawSkeletalMesh && Cast<USkinnedMeshComponent>(Proxy->GetComponent()))
-				{
 					return;
 				}
 			}
@@ -219,8 +220,7 @@ void FSceneGatherer::GatherRenderPackets(FScene& Scene, FRenderQueue& RenderQueu
 				for (uint32 VisibleIndex = Begin; VisibleIndex < End; ++VisibleIndex)
 				{
 					FPrimitiveSceneProxy* Proxy = VisibleProxies[VisibleIndex];   // 읽기만
-					if (!Proxy->IsVisible()){ continue;
-}
+					if (!Proxy->IsVisible()){ continue; }
 
 					UStaticMesh* Mesh = Proxy->GetMesh();
 					if (!Mesh)
@@ -258,7 +258,8 @@ void FSceneGatherer::GatherRenderPackets(FScene& Scene, FRenderQueue& RenderQueu
 
 						FRenderPacket& Packet = Out.Packets.AddDefaulted_GetRef();   // 조각 전용 배열에 추가
 						Packet.Proxy = Proxy;
-						Packet.Mesh = Mesh;
+						Packet.VertexFactory = &Mesh->GetVertexFactory(LOD);
+						Packet.IndexBuffer = Mesh->GetIndexBuffer(LOD);
 						Packet.Material = Section.Material;
 						Packet.StartIndex = Section.StartIndex;
 						Packet.IndexCount = Section.IndexCount;
@@ -317,17 +318,7 @@ void FSceneGatherer::GatherRenderPackets(FScene& Scene, FRenderQueue& RenderQueu
 				const bool bHandled = ResolveBillboard && GatherDynamicRenderPackets(*Proxy, RenderQueue, LODView->CameraPosition, ResolveBillboard, ViewContext, IconQueue);
 				if (!bHandled)
 				{
-					// 기본 호출과 미지원 Proxy는 기존 Component 제출 경로를 유지한다.
-					UStaticMeshComponent* StaticMeshComponent = LODView ? Cast<UStaticMeshComponent>(Primitive) : nullptr;
-					if (StaticMeshComponent && StaticMeshComponent->GetStaticMesh())
-					{
-						const uint32 LOD = SelectedLODs[VisibleIndex];
-						StaticMeshComponent->SubmitToRenderQueue(RenderQueue, LOD);
-					}
-					else
-					{
-						Primitive->SubmitToRenderQueue(RenderQueue);
-					}
+					Primitive->SubmitToRenderQueue(RenderQueue);
 				}
 
 				// continue 없이 항상 여기까지 와서 새 패킷에 여유 칸을 배정한다.
@@ -595,18 +586,15 @@ void FSceneGatherer::GatherShadowCasters(FScene& Scene, FProjectedShadowInfo& Sh
 
 		// 이번 범위는 정적 메시이며, 에디터 표시용 메시를 제외한다.
 		auto* StaticComponent = Cast<UStaticMeshComponent>(Proxy->GetComponent());
-		auto* SkinnedMeshComponent = Cast<USkinnedMeshComponent>(Proxy->GetComponent());
-		if ((!StaticComponent || StaticComponent->IsEditorIcon()) && !SkinnedMeshComponent)
+		const bool bSkinned = Cast<USkinnedMeshComponent>(Proxy->GetComponent()) != nullptr;
+		if ((!StaticComponent || StaticComponent->IsEditorIcon()) && !bSkinned)
 		{
 			return;
 		}
-
-		// 메인 패스처럼 Skeletal Mesh 쇼플래그가 꺼지면 그림자도 만들지 않는다.
-		if (SkinnedMeshComponent && !bDrawSkeletalMesh)
+		if (bSkinned && !bDrawSkeletalMesh)
 		{
 			return;
 		}
-
 
 		// BVH가 Frustum 내부 가지를 일괄 방문해도 이 검사는 수행한다.
 		if (LocalLight && CasterSphereRadius > 0.0f && !IsAABBInSphere(Proxy->GetBounds(), LocalLight->Position, CasterSphereRadius))
@@ -622,18 +610,10 @@ void FSceneGatherer::GatherShadowCasters(FScene& Scene, FProjectedShadowInfo& Sh
 			return;
 		}
 
-		// 메시·Proxy·RenderState 검사는 기존 Submit 함수가 담당한다.
 		// 기초 그림자는 카메라와 독립적으로 LOD0를 사용한다.
 		MeshPackets.Reset();
-		if (StaticComponent)
-		{
-			StaticComponent->SubmitToRenderQueue(MeshPackets, 0);
-
-		}
-		else if (SkinnedMeshComponent)
-		{
-			SkinnedMeshComponent->SubmitToRenderQueue(MeshPackets);
-		}
+		Proxy->PrepareDynamicData();
+		Proxy->GetMeshPackets(MeshPackets, 0);
 
 		bool bPacketAdded = false;
 		for (const FRenderPacket& Packet : MeshPackets)

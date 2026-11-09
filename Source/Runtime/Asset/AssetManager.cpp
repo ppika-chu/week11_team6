@@ -342,6 +342,7 @@ void UAssetManager::CreateDefaultMeshes()
 		FString Error;
 		if (FSkeletalMeshGenerator::BuildTestArm(*TestArm, Error))
 		{
+			TestArm->InitResources();
 			// 확인이 필요하면 주석 해제 (역바인드 행렬까지 찍힌다)
 			//FSkeletalMeshGenerator::LogSkinData(*TestArm);
 			RegisterAsset("TestArm", TestArm);
@@ -523,9 +524,21 @@ bool UAssetManager::ReorientStaticMesh(UStaticMesh& Mesh, const std::function<FV
 		return false;
 	}
 	Mesh.VertexBuffer = std::move(VB);
+	Mesh.RebuildRenderData();
 
 	Data.BuildTriangleBVH(); // 피킹용 삼각형 BVH도 새 좌표로
 	return true;
+}
+
+void UAssetManager::ForEachAsset(const std::function<void(URenderAsset& Asset)>& Func)
+{
+	for (auto& [Key, Asset] : Get().AssetMap)
+	{
+		if (Asset && !Asset->IsRetired())
+		{
+			Func(*Asset);
+		}
+	}
 }
 
 void UAssetManager::ForEachObjStaticMesh(const std::function<void(const FString& Key, UStaticMesh& Mesh)>& Func)
