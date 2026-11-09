@@ -7,7 +7,7 @@ class UTexture2D;
 class UClass;
 
 // 클립 하나를 재생해 보는 창. 언리얼 FAnimationEditor에 해당한다.
-// 패널: 스켈레톤 트리 | 뷰포트·타임라인 | Notify 목록·편집.
+// 패널: 스켈레톤 트리 | 뷰포트·타임라인 | Notify 목록·편집, Asset Details. 위에 저장 툴바.
 class FAnimationEditor : public FPersonaAssetEditor
 {
 public:
@@ -32,8 +32,8 @@ private:
 	void SetNotifyDemoEnabled(bool bEnabled);
 	void CreateNewNotify(UClass* NotifyClass);
 	void PrepareNotifyEdit();
-	bool SaveNotifies();
-	bool DiscardNotifyChanges();
+	// 디스크의 편집 데이터(Notify, Root Motion 설정)로 되돌린다
+	bool DiscardAssetChanges();
 	void RefreshNotifyOffsets();
 	// 언리얼 SAnimTimelineTransportControls. 처음 / 이전 프레임 / 역재생 / 재생 / 다음 프레임 / 끝 / 반복, 오른쪽에 속도
 	void DrawTransportControls();
@@ -41,6 +41,14 @@ private:
 	void DrawPlaybackSpeedMenu();
 	// 뷰포트 왼쪽 위에 프레임 레이트
 	FString GetDisplayInfo() const override;
+	// 보기 콤보의 Root Motion 하위 메뉴. 언리얼 Character > Animation > Process Root Motion. 미리보기 전용이라 저장하지 않는다
+	void DrawViewModeMenuExtras() override;
+	// 패널들 위 툴바. 언리얼 에셋 에디터 툴바처럼 Save 버튼을 둔다
+	void DrawToolbar();
+	// 언리얼 애니메이션 에디터의 Asset Details. 지금은 Root Motion 항목만
+	void DrawAssetDetails();
+	// 편집 데이터(Notify, Root Motion 설정)를 이 클립의 .fbxbin에 쓴다. 결과는 SaveMessage에 남긴다 (UE 에셋 저장)
+	bool SaveAsset();
 
 	// 언리얼 SAnimTimelineTransportControls의 버튼 동작. 녹화(OnClick_Record)는 넣지 않는다
 	void OnClick_Backward_End();
@@ -55,18 +63,20 @@ private:
 
 	UAnimSequence* Sequence = nullptr; // 소유는 UAssetManager
 	FString WindowTitle;               // 파일 이름###에셋 키. 에셋별로 창 위치가 저장된다
+	// Notify나 Root Motion 설정을 바꿨지만 아직 파일에 쓰지 않았다. 메모리의 에셋에는 바로 적용된다 (UE MarkPackageDirty)
+	bool bAssetDirty = false;
 	// 패널 창 제목(이름###에셋 키). 에셋별로 패널 배치가 저장된다
 	FString TreePanelTitle;
 	FString ViewportPanelTitle;
 	FString TimelinePanelTitle;
+	FString DetailsPanelTitle;
 	FString NotifyPanelTitle;
 	int32 SelectedNotifyIndex = -1;
 	// 한 번 누르고 끄는 동안 시작 시각과 마우스 위치를 유지한다.
 	int32 DraggedNotifyIndex = -1;
 	float NotifyDragStartX = 0.0f;
 	float NotifyDragStartTime = 0.0f;
-	bool bNotifyDirty = false;
-	FString SaveMessage;
+	FString SaveMessage; // 마지막 저장, 되돌리기 결과
 
 	// 재생 버튼 아이콘. 소유는 UAssetManager. 파일이 없으면 글자 버튼
 	UTexture2D* ToFrontIcon = nullptr;

@@ -41,6 +41,45 @@ FString NodePath(FbxNode* Node)
 	return NodePath(Node->GetParent()) + Name + "[" + std::to_string(Occurrence) + "]/";
 }
 
+// UE USkeleton::MergeAllBonesToBoneTree: 메시 본 중 스켈레톤에 없는 것을 끝에 붙인다.
+// 끝에 붙이므로 기존 본 번호와 그 번호를 쓰는 애니메이션 트랙은 그대로다. 이미 있는 본은 부모 이름이 같아야 한다
+bool MergeAllBonesToBoneTree(FReferenceSkeleton& SkeletonRef, const FReferenceSkeleton& MeshRef, FString& Error)
+{
+	if (SkeletonRef.GetNum() == 0)
+	{
+		SkeletonRef = MeshRef;
+		return true;
+	}
+	for (int32 MeshIndex = 0; MeshIndex < MeshRef.GetNum(); ++MeshIndex)
+	{
+		const FMeshBoneInfo& Bone = MeshRef.RefBoneInfo[MeshIndex];
+		const FString ParentName = Bone.ParentIndex >= 0 ? MeshRef.RefBoneInfo[Bone.ParentIndex].Name : FString();
+		const int32 SkeletonIndex = SkeletonRef.FindBoneIndex(Bone.Name);
+		if (SkeletonIndex != INDEX_NONE)
+		{
+			// 같은 이름이면 부모도 같아야 한다 (UE IsCompatibleMesh의 부모 체인 검사)
+			const int32 SkeletonParent = SkeletonRef.RefBoneInfo[SkeletonIndex].ParentIndex;
+			const FString SkeletonParentName = SkeletonParent >= 0 ? SkeletonRef.RefBoneInfo[SkeletonParent].Name : FString();
+			if (SkeletonParentName != ParentName)
+			{
+				Error = "Bone hierarchy does not match the skeleton: " + Bone.Name + " (parent '" + ParentName + "', skeleton '" + SkeletonParentName + "')";
+				return false;
+			}
+			continue;
+		}
+		// 메시 본은 부모가 자식보다 앞이라 부모는 이미 스켈레톤에 있다. 루트가 다르면 합칠 수 없다
+		const int32 NewParent = ParentName.empty() ? INDEX_NONE : SkeletonRef.FindBoneIndex(ParentName);
+		if (NewParent == INDEX_NONE)
+		{
+			Error = "Root bone does not match the skeleton: " + Bone.Name + " (skeleton root '" + SkeletonRef.RefBoneInfo[0].Name + "')";
+			return false;
+		}
+		SkeletonRef.RefBoneInfo.Add({ Bone.Name, NewParent });
+		SkeletonRef.RefBonePose.Add(MeshRef.RefBonePose[MeshIndex]);
+	}
+	return SkeletonRef.Validate(Error);
+}
+
 bool HasAttribute(FbxNode* Node, FbxNodeAttribute::EType Type)
 {
 	for (int I = 0; Node && I < Node->GetNodeAttributeCount(); ++I)
@@ -256,7 +295,8 @@ struct FRig
 	std::set<FbxNode*> Needed;
 	std::vector<FbxNode*> Bones;
 	std::unordered_map<FbxNode*, uint16> Indices;
-	FReferenceSkeleton Reference;
+	FReferenceSkeleton Reference; // 이 FBX 메시의 본과 기준 자세
+	FReferenceSkeleton SkeletonReference; // 저장할 스켈레톤. 기존 스켈레톤에 이 FBX의 본을 합친 결과. 트랙 번호는 여기 기준
 	FbxAMatrix ParentBind;
 	FString Key;
 	bool bUseTimeZeroAsBindPose = false;
@@ -734,10 +774,48 @@ bool FImport::BuildRig(FRig& Rig)
 		Rig.TimeZeroRebindMatrices.SetNum(TimeZeroModel.Num());
 		for (int32 Bone = 0; Bone < TimeZeroModel.Num(); ++Bone) Rig.TimeZeroRebindMatrices[Bone] = BindModel[Bone].Inverse() * TimeZeroModel[Bone];
 	}
-	Rig.Key = MakeKey("SKEL", GetFbxObjectName(Rig.Root),"Skeleton:" + NodePath(Rig.Root));
-	if (Rig.Key.empty()) return false;
-	auto Asset = Data(EFbxAssetType::Skeleton, Rig.Key, "Skeleton:" + NodePath(Rig.Root));
-	Asset.RefSkeleton = Rig.Reference;
+	// 언리얼처럼 스켈레톤은 독립 에셋이다. 고른 스켈레톤이나 이미 있는 SKEL_ 파일은 덮어쓰지 않고 없는 본만 합친다.
+	// 그래야 다른 FBX가 합쳐 둔 본이 재임포트로 사라지지 않는다
+	FFbxAssetData Asset;
+	if (!Options.Skeleton.empty())
+	{
+		Rig.Key = Options.Skeleton;
+	}
+	else
+	{
+		Rig.Key = MakeKey("SKEL", GetFbxObjectName(Rig.Root), "Skeleton:" + NodePath(Rig.Root));
+		if (Rig.Key.empty()) return false;
+	}
+	// 한 FBX의 여러 리그를 같은 스켈레톤에 넣으면 이미 출력한 것에 합친다 (같은 키를 두 번 출력하지 않게)
+	for (FFbxAssetData& Pending : Output)
+	{
+		if (Pending.Type == EFbxAssetType::Skeleton && Pending.Key == Rig.Key)
+		{
+			if (!MergeAllBonesToBoneTree(Pending.RefSkeleton, Rig.Reference, Error)) return false;
+			Rig.SkeletonReference = Pending.RefSkeleton;
+			return true;
+		}
+	}
+	fs::path SkeletonPath;
+	if (!FbxPath::ResolveKey(Rig.Key, SkeletonPath, Error)) return false;
+	if (fs::exists(SkeletonPath))
+	{
+		// 출처(SourcePath, SourceObject)도 그대로 둬서 원래 FBX가 다시 임포트할 때 같은 파일로 알아본다
+		if (!FFbxAssetBake::ReadBaked(FbxPath::ToString(SkeletonPath), Asset, Error)) return false;
+		if (Asset.Type != EFbxAssetType::Skeleton) { Error = "Not a skeleton asset: " + Rig.Key; return false; }
+		Asset.Key = Rig.Key;
+	}
+	else if (!Options.Skeleton.empty())
+	{
+		Error = "Selected skeleton file not found: " + Rig.Key;
+		return false;
+	}
+	else
+	{
+		Asset = Data(EFbxAssetType::Skeleton, Rig.Key, "Skeleton:" + NodePath(Rig.Root));
+	}
+	if (!MergeAllBonesToBoneTree(Asset.RefSkeleton, Rig.Reference, Error)) return false;
+	Rig.SkeletonReference = Asset.RefSkeleton;
 	Output.Add(std::move(Asset));
 	return true;
 }
@@ -1394,7 +1472,8 @@ void FImport::CookAnimations(const FRig& Rig)
 		for (int32 Bone = 0; Bone < BoneCount; ++Bone)
 		{
 			Tracks[Bone].Name = Rig.Reference.RefBoneInfo[Bone].Name;
-			Tracks[Bone].BoneTreeIndex = Bone;
+			// 트랙은 스켈레톤 본 번호를 쓴다. 공유 스켈레톤은 이 FBX와 본 순서가 다를 수 있어 이름으로 찾는다 (합쳤으므로 항상 있다)
+			Tracks[Bone].BoneTreeIndex = Rig.SkeletonReference.FindBoneIndex(Tracks[Bone].Name);
 			Tracks[Bone].InternalTrackData.PosKeys.Reserve(BakeKeyCount);
 			Tracks[Bone].InternalTrackData.RotKeys.Reserve(BakeKeyCount);
 			Tracks[Bone].InternalTrackData.ScaleKeys.Reserve(BakeKeyCount);
@@ -1441,12 +1520,19 @@ void FImport::CookAnimations(const FRig& Rig)
 bool FImport::Run()
 {
 	Gather(Scene->GetRootNode(), true);
-	if (Meshes.empty()) { Error = "No visible supported mesh geometry in FBX"; return false; }
 	FindRigs(); if (!Error.empty()) return false;
+	// 메시 없는 애니메이션 FBX (Mixamo "Without Skin" 등). FindRigs가 본 노드로 만든 리그를 그대로 쓴다
+	const bool bAnimationOnly = Meshes.empty();
+	if (bAnimationOnly)
+	{
+		if (!Options.bImportAnimations) { Error = "No visible supported mesh geometry in FBX"; return false; }
+		if (Rigs.empty()) { Error = "No mesh or skeleton in FBX"; return false; }
+	}
 	PreparePoses();
-	// 메시가 연결되는 리그만 출력한다. 포즈/컨트롤 본은 실제 본 테이블에 유지된다.
+	// 메시가 연결되는 리그만 출력한다. 포즈/컨트롤 본은 실제 본 테이블에 유지된다. 메시 없는 FBX는 모든 리그
 	std::set<FbxNode*> Used;
 	for (const auto& Item : Meshes) if (Item.Rig) Used.insert(Item.Rig);
+	if (bAnimationOnly) for (const auto& [Path, Rig] : Rigs) Used.insert(Rig.Root);
 	for (auto& [Path, Rig] : Rigs) if (Used.contains(Rig.Root))
 	{
 		// 바인드 포즈가 유효하지 않으면 옵션과 상관없이 0초 자세를 쓴다. (UE InterchangeGenericCommonSkeletalMeshesAndAnimationsProperties)

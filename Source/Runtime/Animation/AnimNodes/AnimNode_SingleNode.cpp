@@ -24,6 +24,7 @@ void FAnimNode_SingleNode::Evaluate(FAnimPose& OutPose)
 {
 	if (auto* Sequence = Cast<UAnimSequenceBase>(Instance->CurrentAsset))
 	{
-		Sequence->GetAnimationPose(OutPose, FAnimExtractContext(Instance->CurrentTime));
+		// Root Motion을 꺼내는 인스턴스면 루트 본을 고정한다
+		Sequence->GetAnimationPose(OutPose, FAnimExtractContext(Instance->CurrentTime, Instance->ShouldExtractRootMotion()));
 	}
 }

@@ -2,6 +2,9 @@
 #include "DebugSkelMeshComponent.h"
 
 #include "DebugSkelMeshSceneProxy.h"
+#include "Animation/AnimSequence.h"
+#include "Animation/AnimSingleNodeInstance.h"
+#include "Animation/Skeleton.h"
 
 namespace
 {
@@ -142,5 +145,172 @@ void UDebugSkelMeshComponent::SetBoneWeightColorRamp(const FSkinWeightColorRamp&
 	if (bDrawBoneInfluences)
 	{
 		MarkRenderStateDirty();
+	}
+}
+
+namespace
+{
+// 바닥 범위를 벗어나면 반대편으로 넘긴다 (UE WrapInRange)
+float WrapInRange(float Value, float Min, float Max)
+{
+	const float Size = Max - Min;
+	if (Size <= 0.0f)
+	{
+		return Value;
+	}
+	while (Value > Max)
+	{
+		Value -= Size;
+	}
+	while (Value < Min)
+	{
+		Value += Size;
+	}
+	return Value;
+}
+
+// 그 시각 루트 본을 루트 기준 자세에 대한 상대값으로 (UE UE::Anim::ExtractRootTransformFromAnimationAsset)
+FTransform ExtractRootTransformFromAnimationAsset(const UAnimSequence& Sequence, float Time)
+{
+	const USkeleton* Skeleton = Sequence.GetSkeleton();
+	if (!Skeleton || Skeleton->RefSkeleton.GetNum() == 0)
+	{
+		return FTransform::Identity;
+	}
+	FTransform RootTransform = Sequence.ExtractRootTrackTransform(Time);
+	RootTransform.Scale = FVector(1.0f, 1.0f, 1.0f);
+	return Skeleton->RefSkeleton.RefBonePose[0].Inverse() * RootTransform;
+}
+}
+
+bool UDebugSkelMeshComponent::DoesCurrentAssetHaveRootMotion() const
+{
+	const UAnimSingleNodeInstance* PreviewInstance = GetSingleNodeInstance();
+	const UAnimSequenceBase* Sequence = PreviewInstance ? Cast<UAnimSequenceBase>(PreviewInstance->GetCurrentAsset()) : nullptr;
+	return Sequence && Sequence->HasRootMotion();
+}
+
+bool UDebugSkelMeshComponent::CanUseProcessRootMotionMode(EProcessRootMotionMode Mode) const
+{
+	if (!GetSingleNodeInstance())
+	{
+		return false;
+	}
+	return Mode == EProcessRootMotionMode::Ignore || DoesCurrentAssetHaveRootMotion();
+}
+
+void UDebugSkelMeshComponent::SetProcessRootMotionMode(EProcessRootMotionMode Mode)
+{
+	RequestedProcessRootMotionMode = Mode;
+	if (CanUseProcessRootMotionMode(Mode))
+	{
+		SetProcessRootMotionModeInternal(Mode);
+	}
+}
+
+void UDebugSkelMeshComponent::SetProcessRootMotionModeInternal(EProcessRootMotionMode Mode)
+{
+	ProcessRootMotionMode = Mode;
+	ResetRootTransform();
+}
+
+void UDebugSkelMeshComponent::ResetRootTransform()
+{
+	// 크기는 두고 위치, 회전만 되돌린다
+	FTransform RootMotionTransform = FTransform::Identity;
+	const UAnimSingleNodeInstance* PreviewInstance = GetSingleNodeInstance();
+	if (PreviewInstance)
+	{
+		ConsumeRootMotionPreviousPlaybackTime = PreviewInstance->GetCurrentTime();
+		// Loop and Reset은 지금 시각까지 이동한 자리에 둔다. 다음 반복 전까지 메시가 튀지 않는다
+		const UAnimSequence* Sequence = Cast<UAnimSequence>(PreviewInstance->GetCurrentAsset());
+		if (ProcessRootMotionMode == EProcessRootMotionMode::LoopAndReset && Sequence)
+		{
+			RootMotionTransform = ExtractRootTransformFromAnimationAsset(*Sequence, PreviewInstance->GetCurrentTime());
+		}
+	}
+	RootMotionTransform.Scale = GetTransform().Scale;
+	SetTransform(RootMotionTransform);
+}
+
+void UDebugSkelMeshComponent::ConsumeRootMotion(const FVector& FloorMin, const FVector& FloorMax)
+{
+	UAnimSingleNodeInstance* PreviewInstance = GetSingleNodeInstance();
+	if (!PreviewInstance)
+	{
+		return;
+	}
+
+	// 에셋이 Root Motion을 안 쓰면 Ignore로, 쓰게 되면 요청 값으로
+	if (ProcessRootMotionMode != EProcessRootMotionMode::Ignore && !DoesCurrentAssetHaveRootMotion())
+	{
+		SetProcessRootMotionModeInternal(EProcessRootMotionMode::Ignore);
+	}
+	if (ProcessRootMotionMode != RequestedProcessRootMotionMode && CanUseProcessRootMotionMode(RequestedProcessRootMotionMode))
+	{
+		SetProcessRootMotionModeInternal(RequestedProcessRootMotionMode);
+	}
+
+	const FRootMotionMovementParams ExtractedRootMotion = USkeletalMeshComponent::ConsumeRootMotion();
+	const float CurrentTime = PreviewInstance->GetCurrentTime();
+	const float PreviousTime = ConsumeRootMotionPreviousPlaybackTime;
+	ConsumeRootMotionPreviousPlaybackTime = CurrentTime;
+
+	const UAnimSequence* Sequence = Cast<UAnimSequence>(PreviewInstance->GetCurrentAsset());
+	if (ProcessRootMotionMode == EProcessRootMotionMode::Ignore || !Sequence)
+	{
+		return;
+	}
+
+	const FVector Scale = GetTransform().Scale;
+	const auto AddLocalTransform = [this, &Scale](const FTransform& Delta)
+	{
+		// UE AddLocalTransform: 변화량을 먼저 적용하고 지금 상대 변환을 적용한다
+		FTransform Relative = GetTransform();
+		Relative.Scale = FVector(1.0f, 1.0f, 1.0f);
+		FTransform NewRelative = Delta * Relative;
+		NewRelative.Scale = Scale;
+		SetTransform(NewRelative);
+	};
+
+	if (!PreviewInstance->IsPlaying())
+	{
+		// 재생하지 않아도 타임라인을 끌면 시간이 바뀐다. 그 구간의 변화량을 직접 꺼낸다
+		if (CurrentTime != PreviousTime)
+		{
+			AddLocalTransform(Sequence->ExtractRootMotionFromRange(PreviousTime, CurrentTime));
+		}
+		return;
+	}
+
+	const bool bLooped = PreviewInstance->IsReverse() ? CurrentTime > PreviousTime : CurrentTime < PreviousTime;
+	const FTransform RootMotionDelta = ExtractedRootMotion.bHasRootMotion ? ExtractedRootMotion.GetRootMotionTransform() : FTransform::Identity;
+
+	if (ProcessRootMotionMode == EProcessRootMotionMode::Loop)
+	{
+		FTransform Relative = GetTransform();
+		Relative.Scale = FVector(1.0f, 1.0f, 1.0f);
+		FTransform RootMotionTransform = RootMotionDelta * Relative;
+		// 바닥 밖으로 나가면 반대편으로 넘긴다
+		RootMotionTransform.Location.X = WrapInRange(RootMotionTransform.Location.X, FloorMin.X, FloorMax.X);
+		RootMotionTransform.Location.Y = WrapInRange(RootMotionTransform.Location.Y, FloorMin.Y, FloorMax.Y);
+		RootMotionTransform.Scale = Scale;
+		SetTransform(RootMotionTransform);
+	}
+	else if (ProcessRootMotionMode == EProcessRootMotionMode::LoopAndReset)
+	{
+		if (bLooped)
+		{
+			// 반복되면 시작(역재생이면 끝)부터 지금 시각까지 이동한 자리로 되돌린다
+			const float SectionStartPosition = PreviewInstance->IsReverse() ? Sequence->GetPlayLength() : 0.0f;
+			const FTransform InitialTransform = ExtractRootTransformFromAnimationAsset(*Sequence, SectionStartPosition);
+			FTransform RootMotionTransform = Sequence->ExtractRootMotionFromRange(SectionStartPosition, CurrentTime) * InitialTransform;
+			RootMotionTransform.Scale = Scale;
+			SetTransform(RootMotionTransform);
+		}
+		else
+		{
+			AddLocalTransform(RootMotionDelta);
+		}
 	}
 }
