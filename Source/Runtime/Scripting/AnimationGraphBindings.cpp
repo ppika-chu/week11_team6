@@ -497,6 +497,9 @@ void BindDefinitions(sol::state& Lua, const std::shared_ptr<FLuaAnimationGraphBi
 	});
 	Transition.set_function("SetFromStateIndex", [](const FLuaAnimTransition& Value, int32 Index) { Value.Get()->SetFromStateIndex(Index); });
 	Transition.set_function("GetFromStateIndex", [](const FLuaAnimTransition& Value) { return Value.Get()->GetFromStateIndex(); });
+	// AnyState는 SetPriority 값이 활성 전이보다 작으면 Blend 중에도 조건을 평가하고 전이를 중단한다.
+	Transition.set_function("SetAnyState", [](const FLuaAnimTransition& Value, bool AnyState) { Value.Get()->SetAnyState(AnyState); });
+	Transition.set_function("IsAnyState", [](const FLuaAnimTransition& Value) { return Value.Get()->IsAnyState(); });
 	Transition.set_function("SetToStateIndex", [](const FLuaAnimTransition& Value, int32 Index) { Value.Get()->SetToStateIndex(Index); });
 	Transition.set_function("GetToStateIndex", [](const FLuaAnimTransition& Value) { return Value.Get()->GetToStateIndex(); });
 	Transition.set_function("SetPriority", [](const FLuaAnimTransition& Value, int32 Priority) { Value.Get()->SetPriority(Priority); });
