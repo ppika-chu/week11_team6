@@ -10,8 +10,8 @@ struct FAnimPose;
 
 namespace EAnimationMode
 {
-	// 지정한 C++ AnimInstance 클래스를 사용하거나 단일 Asset 재생 Instance를 사용한다.
-	enum Type { AnimationClass, AnimationSingleNode };
+	// 기존 Class·SingleNode 저장값을 유지한다. Default는 Lua Graph를 구성할 엔진 제공 Instance다.
+	enum Type { AnimationClass, AnimationSingleNode, AnimationDefault };
 }
 
 // AnimInstance를 생성·정리하고 평가 결과를 BoneSpaceTransforms에 반영한다.
@@ -23,7 +23,7 @@ class USkeletalMeshComponent : public USkinnedMeshComponent
 	// UE는 AnimToPlay~SavedPlayRate를 FSingleAnimationPlayData AnimationData로 묶는다.
 	// PROPERTY가 구조체 안 멤버를 Details에 펼치지 못해 같은 이름으로 컴포넌트에 둔다.
 	REFLECT_START(USkeletalMeshComponent)
-		PROPERTY_ENUM(AnimationMode, "Use Animation Class", "Use Animation Asset")
+		PROPERTY_ENUM(AnimationMode, "Custom Anim Instance", "Single Node Instance", "Default Anim Instance")
 		PROPERTY(AnimToPlay)
 		PROPERTY(bSavedLooping)
 		PROPERTY(bSavedPlaying)
@@ -50,6 +50,7 @@ public:
 
 	// Instance 구성과 갱신 — Class·재생 모드에 맞는 Instance를 준비하고 Update를 호출한다.
 	void SetAnimInstanceClass(UClass* NewClass);
+	UClass* GetAnimInstanceClass() const { return AnimClass; }
 	UAnimInstance* GetAnimInstance() const { return AnimScriptInstance; }
 	void InitAnim(bool bForceReinit);
 	void TickAnimation(float DeltaTime);
@@ -98,10 +99,11 @@ protected:
 	bool FinalizePoseEvaluationResult(const FAnimPose& InFinalPose);
 
 private:
+	UClass* GetAnimationInstanceClassForMode() const;
 	bool IsValidBoneIndex(int32 BoneIndex) const { return BoneIndex >= 0 && BoneIndex < BoneSpaceTransforms.Num(); }
 
 	TArray<FTransform> BoneSpaceTransforms;
 	UClass* AnimClass = nullptr;
-	EAnimationMode::Type AnimationMode = EAnimationMode::AnimationClass;
+	EAnimationMode::Type AnimationMode = EAnimationMode::AnimationDefault;
 	UAnimInstance* AnimScriptInstance = nullptr; // 이 Component가 생성하고 ClearAnimScriptInstance에서 정리하는 Instance.
 };

@@ -2,6 +2,7 @@
 #include "SkeletalMeshComponent.h"
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimSingleNodeInstance.h"
+#include "Animation/LuaAnimInstance.h"
 #include "Animation/AnimPose.h"
 #include "Animation/Skeleton.h"
 #include "Asset/AssetManager.h"
@@ -45,9 +46,24 @@ void USkeletalMeshComponent::InitAnim(bool bForceReinit)
 	}
 }
 
+UClass* USkeletalMeshComponent::GetAnimationInstanceClassForMode() const
+{
+	switch (AnimationMode)
+	{
+	case EAnimationMode::AnimationDefault: return ULuaAnimInstance::StaticClass();
+	case EAnimationMode::AnimationSingleNode: return UAnimSingleNodeInstance::StaticClass();
+	default: return AnimClass;
+	}
+}
+
 bool USkeletalMeshComponent::InitializeAnimScriptInstance(bool bForceReinit)
 {
-	UClass* InstanceClass = AnimationMode == EAnimationMode::AnimationSingleNode ? UAnimSingleNodeInstance::StaticClass() : AnimClass;
+	UClass* InstanceClass = GetAnimationInstanceClassForMode();
+	// 로드 뒤 설정과 SingleNode 파생 Custom도 선택한 실제 클래스로 비교한다.
+	if (AnimScriptInstance && AnimScriptInstance->GetClass() != InstanceClass)
+	{
+		ClearAnimScriptInstance();
+	}
 	if (!InstanceClass)
 	{
 		return false;
@@ -200,13 +216,7 @@ void USkeletalMeshComponent::InitializeComponent()
 void USkeletalMeshComponent::BeginPlay()
 {
 	Super::BeginPlay();
-	// 씬을 불러올 때는 등록(OnRegister) 뒤에 프로퍼티가 채워진다.
-	// 저장된 Animation Mode와 지금 인스턴스 종류가 다르면 다시 만들어 저장된 설정을 적용한다.
-	const bool bWantsSingleNode = AnimationMode == EAnimationMode::AnimationSingleNode;
-	if (AnimScriptInstance && bWantsSingleNode != (GetSingleNodeInstance() != nullptr))
-	{
-		ClearAnimScriptInstance();
-	}
+	// 등록 뒤 복원된 설정은 InitAnim에서 실제 클래스를 비교해 적용한다.
 	InitAnim(false);
 }
 

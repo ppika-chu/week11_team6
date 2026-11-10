@@ -36,6 +36,8 @@
 #include "Core/EngineLog.h"
 #include "Render/SkeletalMesh.h"
 #include "Animation/AnimationAsset.h"
+#include "Animation/AnimSingleNodeInstance.h"
+#include "Animation/LuaAnimInstance.h"
 #include "Animation/Skeleton.h"
 #include "Math/Color.h"
 #include <algorithm>
@@ -1440,6 +1442,70 @@ bool DrawProperty(UObject* Object, const FProperty& Property, ImFont* CustomFont
 	return bChanged;
 }
 
+// 클래스 선택은 현재 세션에 적용한다. 클래스 참조의 저장·복원은 후속 작업이다.
+bool DrawAnimationInstanceSettings(USkeletalMeshComponent& Component)
+{
+	bool bChanged = false;
+	const EAnimationMode::Type Modes[] = {
+		EAnimationMode::AnimationDefault, EAnimationMode::AnimationSingleNode, EAnimationMode::AnimationClass
+	};
+	const char* Labels[] = { "Default Anim Instance", "Single Node Instance", "Custom Anim Instance" };
+	int32 Selected = 0;
+	for (int32 Index = 0; Index < 3; ++Index)
+	{
+		if (Component.GetAnimationMode() == Modes[Index]) { Selected = Index; }
+	}
+	if (ImGui::BeginCombo("Animation Mode", Labels[Selected]))
+	{
+		for (int32 Index = 0; Index < 3; ++Index)
+		{
+			if (ImGui::Selectable(Labels[Index], Selected == Index) && Selected != Index)
+			{
+				Component.SetAnimationMode(Modes[Index]);
+				bChanged = true;
+			}
+		}
+		ImGui::EndCombo();
+	}
+	if (Component.GetAnimationMode() == EAnimationMode::AnimationDefault)
+	{
+		ImGui::TextWrapped("Connect a graph from Lua. No root uses the reference pose.");
+	}
+	else if (Component.GetAnimationMode() == EAnimationMode::AnimationClass)
+	{
+		UClass* SelectedClass = Component.GetAnimInstanceClass();
+		if (ImGui::BeginCombo("Anim Class", SelectedClass ? SelectedClass->Name.c_str() : "None"))
+		{
+			if (ImGui::Selectable("None", !SelectedClass) && SelectedClass)
+			{
+				Component.SetAnimInstanceClass(nullptr);
+				bChanged = true;
+			}
+			TArray<UClass*> Classes;
+			GetDerivedClasses(UAnimInstance::StaticClass(), Classes);
+			std::sort(Classes.begin(), Classes.end(), [](const UClass* A, const UClass* B) { return A->Name < B->Name; });
+			for (UClass* Class : Classes)
+			{
+				if (!Class->Constructor || Class == ULuaAnimInstance::StaticClass() || Class == UAnimSingleNodeInstance::StaticClass()) { continue; }
+				if (ImGui::Selectable(Class->Name.c_str(), Class == SelectedClass) && Class != SelectedClass)
+				{
+					Component.SetAnimInstanceClass(Class);
+					bChanged = true;
+				}
+			}
+			ImGui::EndCombo();
+		}
+		SelectedClass = Component.GetAnimInstanceClass();
+		ImGui::TextWrapped("Lua graphs require a class derived from ULuaAnimInstance.");
+		if (SelectedClass)
+		{
+			ImGui::TextDisabled("Lua Graph: %s", SelectedClass->IsChildOf(ULuaAnimInstance::StaticClass()) ? "Supported" : "Not supported");
+		}
+		ImGui::TextDisabled("Class selection is not saved yet.");
+	}
+	return bChanged;
+}
+
 // 클래스 계층을 따라 올라가며 각 단계의 프로퍼티를 표시
 bool DrawProperties(UObject* Object, ImFont* CustomFont)
 {
@@ -1483,6 +1549,17 @@ bool DrawProperties(UObject* Object, ImFont* CustomFont)
 				if (!Property.HasAnyFlags(CPF_Edit))
 				{
 					continue;
+				}
+				if (auto* Mesh = Cast<USkeletalMeshComponent>(Object); Mesh && Class == USkeletalMeshComponent::StaticClass())
+				{
+					if (Property.Name == "AnimationMode")
+					{
+						bChanged |= DrawAnimationInstanceSettings(*Mesh);
+						continue;
+					}
+					const bool bPlaybackSetting = Property.Name == "AnimToPlay" || Property.Name == "bSavedLooping" ||
+						Property.Name == "bSavedPlaying" || Property.Name == "SavedPosition" || Property.Name == "SavedPlayRate";
+					if (bPlaybackSetting && Mesh->GetAnimationMode() != EAnimationMode::AnimationSingleNode) { continue; }
 				}
 
 				const bool bReadOnly = Property.HasAnyFlags(CPF_EditConst) || !Object->CanEditChange(Property);
