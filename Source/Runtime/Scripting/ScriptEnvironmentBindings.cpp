@@ -112,6 +112,26 @@ void BindScriptWorldEnvironment(sol::environment& TargetEnvironment, UActorCompo
 		UWorld* World = GetOwnerWorld();
 		return GEngine && World && GEngine->SetGameMouseCapture(World, Enabled); });
 
+	// 컴포넌트 구성은 Actor 클래스가 담당한다. Lua는 현재 World에 생성할 위치와 회전만 지정한다.
+	TargetEnvironment.set_function("SpawnActor", [GetOwnerWorld](const FString& ClassName, const FVector& Location, const FRotator& Rotation) -> AActor*
+		{
+		UWorld* World = GetOwnerWorld();
+		UClass* ActorClass = FindClass(ClassName);
+		if (!World || !ActorClass || !ActorClass->IsChildOf(AActor::StaticClass()) || !ActorClass->Constructor)
+		{
+			HTR_LOG(Warning, "[Lua] Cannot spawn actor class: {}", ClassName);
+			return nullptr;
+		}
+
+		const FTransform Transform{ Rotation, Location };
+		AActor* Actor = World->SpawnActor(ActorClass, NAME_None, &Transform);
+		if (Actor)
+		{
+			Actor->SetFlags(EObjectFlags::RF_Transient);
+		}
+		return Actor;
+		});
+
 	// 런타임에 데칼을 찍는다. 페이드가 끝나면 액터까지 스스로 지워지고, 씬에는 저장되지 않는다.
 	// Desc 필드: Location, Rotation, Size(반 길이), Texture, NormalTexture, SpecularFactor, FadeInDuration, FadeStartDelay, FadeDuration
 	TargetEnvironment.set_function("SpawnDecal", [GetOwnerWorld](const sol::table& Desc)
