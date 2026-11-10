@@ -10,7 +10,7 @@
 ABaseballActor::ABaseballActor()
 {
 	constexpr float BallRadius = 0.08f;
-	constexpr float LaunchSpeed = 15.0f;
+	constexpr float LaunchSpeed = 30.0f;
 
 	// Sweep 충돌은 Root인 Sphere가 담당하고, 자식 Mesh는 외형만 담당한다.
 	USphereComponent* Collision = CreateDefaultSubobject<USphereComponent>("CollisionComponent");
@@ -28,7 +28,7 @@ ABaseballActor::ABaseballActor()
 	UProjectileMovementComponent* Movement = CreateDefaultSubobject<UProjectileMovementComponent>("ProjectileMovement");
 	Movement->Velocity = FVector(LaunchSpeed, 0.0f, 0.0f);
 	Movement->bInitialVelocityInLocalSpace = true;
-	Movement->ProjectileGravityScale = 1.0f;
+	Movement->ProjectileGravityScale = 0.5f;
 	Movement->bShouldBounce = true;
 	Movement->Bounciness = 0.2f;
 	Movement->Friction = 0.3f;
