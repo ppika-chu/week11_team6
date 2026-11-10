@@ -27,15 +27,22 @@ void USkeletalMeshComponent::SetAnimInstanceClass(UClass* NewClass)
 	{
 		return;
 	}
-	if (AnimClass == NewClass && AnimationMode == EAnimationMode::AnimationClass)
+	const FString NewClassName = NewClass ? NewClass->Name : FString{};
+	if (AnimClassName == NewClassName && AnimationMode == EAnimationMode::AnimationClass)
 	{
 		return;
 	}
 
-	AnimClass = NewClass;
+	AnimClassName = NewClassName;
 	AnimationMode = EAnimationMode::AnimationClass;
 	ClearAnimScriptInstance();
 	InitAnim(true);
+}
+
+UClass* USkeletalMeshComponent::GetAnimInstanceClass() const
+{
+	UClass* Class = FindClass(AnimClassName);
+	return Class && Class->IsChildOf(UAnimInstance::StaticClass()) && Class->Constructor ? Class : nullptr;
 }
 
 void USkeletalMeshComponent::InitAnim(bool bForceReinit)
@@ -52,7 +59,7 @@ UClass* USkeletalMeshComponent::GetAnimationInstanceClassForMode() const
 	{
 	case EAnimationMode::AnimationDefault: return ULuaAnimInstance::StaticClass();
 	case EAnimationMode::AnimationSingleNode: return UAnimSingleNodeInstance::StaticClass();
-	default: return AnimClass;
+	default: return GetAnimInstanceClass();
 	}
 }
 

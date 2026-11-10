@@ -24,6 +24,7 @@ class USkeletalMeshComponent : public USkinnedMeshComponent
 	// PROPERTY가 구조체 안 멤버를 Details에 펼치지 못해 같은 이름으로 컴포넌트에 둔다.
 	REFLECT_START(USkeletalMeshComponent)
 		PROPERTY_ENUM(AnimationMode, "Custom Anim Instance", "Single Node Instance", "Default Anim Instance")
+		PROPERTY_FLAGS(AnimClassName, CPF_None)
 		PROPERTY(AnimToPlay)
 		PROPERTY(bSavedLooping)
 		PROPERTY(bSavedPlaying)
@@ -50,7 +51,8 @@ public:
 
 	// Instance 구성과 갱신 — Class·재생 모드에 맞는 Instance를 준비하고 Update를 호출한다.
 	void SetAnimInstanceClass(UClass* NewClass);
-	UClass* GetAnimInstanceClass() const { return AnimClass; }
+	UClass* GetAnimInstanceClass() const;
+	const FString& GetAnimInstanceClassName() const { return AnimClassName; }
 	UAnimInstance* GetAnimInstance() const { return AnimScriptInstance; }
 	void InitAnim(bool bForceReinit);
 	void TickAnimation(float DeltaTime);
@@ -103,7 +105,8 @@ private:
 	bool IsValidBoneIndex(int32 BoneIndex) const { return BoneIndex >= 0 && BoneIndex < BoneSpaceTransforms.Num(); }
 
 	TArray<FTransform> BoneSpaceTransforms;
-	UClass* AnimClass = nullptr;
+	// 클래스 참조는 이름으로 저장하고 등록된 클래스에서 찾는다. Details는 클래스 목록으로 편집한다.
+	FString AnimClassName;
 	EAnimationMode::Type AnimationMode = EAnimationMode::AnimationDefault;
 	UAnimInstance* AnimScriptInstance = nullptr; // 이 Component가 생성하고 ClearAnimScriptInstance에서 정리하는 Instance.
 };

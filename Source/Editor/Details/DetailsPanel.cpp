@@ -1442,7 +1442,7 @@ bool DrawProperty(UObject* Object, const FProperty& Property, ImFont* CustomFont
 	return bChanged;
 }
 
-// 클래스 선택은 현재 세션에 적용한다. 클래스 참조의 저장·복원은 후속 작업이다.
+// 클래스 목록으로 선택하고, 저장할 클래스 이름은 Component에서 관리한다.
 bool DrawAnimationInstanceSettings(USkeletalMeshComponent& Component)
 {
 	bool bChanged = false;
@@ -1474,9 +1474,11 @@ bool DrawAnimationInstanceSettings(USkeletalMeshComponent& Component)
 	else if (Component.GetAnimationMode() == EAnimationMode::AnimationClass)
 	{
 		UClass* SelectedClass = Component.GetAnimInstanceClass();
-		if (ImGui::BeginCombo("Anim Class", SelectedClass ? SelectedClass->Name.c_str() : "None"))
+		const FString& ClassName = Component.GetAnimInstanceClassName();
+		const FString Preview = SelectedClass ? SelectedClass->Name : (ClassName.empty() ? "None" : "Missing: " + ClassName);
+		if (ImGui::BeginCombo("Anim Class", Preview.c_str()))
 		{
-			if (ImGui::Selectable("None", !SelectedClass) && SelectedClass)
+			if (ImGui::Selectable("None", ClassName.empty()) && !ClassName.empty())
 			{
 				Component.SetAnimInstanceClass(nullptr);
 				bChanged = true;
@@ -1501,7 +1503,10 @@ bool DrawAnimationInstanceSettings(USkeletalMeshComponent& Component)
 		{
 			ImGui::TextDisabled("Lua Graph: %s", SelectedClass->IsChildOf(ULuaAnimInstance::StaticClass()) ? "Supported" : "Not supported");
 		}
-		ImGui::TextDisabled("Class selection is not saved yet.");
+		else if (!Component.GetAnimInstanceClassName().empty())
+		{
+			ImGui::TextWrapped("The saved class is unavailable. Select a registered AnimInstance class or None.");
+		}
 	}
 	return bChanged;
 }

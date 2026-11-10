@@ -13,7 +13,6 @@
 #include "Editor/HitoriEd/EditorEngine.h"
 #include "UObject/UObjectHash.h"
 #include "Animation/AnimSingleNodeInstance.h"
-#include "Animation/Samples/AnimNotifyDemoInstance.h"
 #include "Animation/Skeleton.h"
 #include "Asset/AssetManager.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -603,30 +602,6 @@ void FAnimationEditor::CreateNewNotify(UClass* NotifyClass)
 	RefreshNotifyOffsets();
 }
 
-void FAnimationEditor::SetNotifyDemoEnabled(bool bEnabled)
-{
-	UAnimSingleNodeInstance* Instance = GetPreviewInstance();
-	const float Time = Instance->GetCurrentTime();
-	const float Rate = Instance->GetPlayRate();
-	const bool bPlaying = Instance->IsPlaying();
-	const bool bLooping = Instance->IsLooping();
-	const bool bReverse = Instance->IsReverse();
-	USkeletalMeshComponent* Component = PreviewScene->GetPreviewComponent();
-	if (bEnabled)
-	{
-		Component->SetAnimInstanceClass(UAnimNotifyDemoInstance::StaticClass());
-	}
-	else
-	{
-		Component->SetAnimationMode(EAnimationMode::AnimationSingleNode);
-	}
-	Instance = Component->GetSingleNodeInstance();
-	Instance->SetAnimationAsset(Sequence, bLooping, Rate);
-	Instance->SetPosition(Time, false);
-	Instance->SetReverse(bReverse);
-	Instance->SetPlaying(bPlaying);
-}
-
 void FAnimationEditor::DrawNotifyEditor()
 {
 	const UEditorEngine* Editor = Cast<UEditorEngine>(GEngine);
@@ -637,14 +612,6 @@ void FAnimationEditor::DrawNotifyEditor()
 		ImGui::TextWrapped("Stop PIE to edit notifies.");
 	}
 	ImGui::BeginDisabled(bPlayingPIE);
-	UAnimSingleNodeInstance* PreviewInstance = GetPreviewInstance();
-	bool bNotifyDemo = Cast<UAnimNotifyDemoInstance>(PreviewInstance) != nullptr;
-	ImGui::BeginDisabled(PreviewInstance == nullptr);
-	if (ImGui::Checkbox("Named Notify Demo", &bNotifyDemo))
-	{
-		SetNotifyDemoEnabled(bNotifyDemo);
-	}
-	ImGui::EndDisabled();
 	if (ImGui::Button("Add Notify"))
 	{
 		ImGui::OpenPopup("AddNotify");

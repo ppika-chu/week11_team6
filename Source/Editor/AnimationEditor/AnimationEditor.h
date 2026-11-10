@@ -28,8 +28,6 @@ private:
 	// Notify 선택은 타임라인과 목록이 공유하며, 배치 값은 Sequence에 저장한다.
 	void DrawNotifiesTrack(float FrameRate);
 	void DrawNotifyEditor();
-	// 시연용 이름 Notify 수신 Instance로 바꾸되 프리뷰 재생 설정은 유지한다.
-	void SetNotifyDemoEnabled(bool bEnabled);
 	void CreateNewNotify(UClass* NotifyClass);
 	void PrepareNotifyEdit();
 	// 디스크의 편집 데이터(Notify, Root Motion 설정)로 되돌린다
