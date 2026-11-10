@@ -194,6 +194,22 @@ void UScriptComponent::OnHit(AActor* OtherActor, const FHitResult& Hit)
 	}
 }
 
+void UScriptComponent::OnAnimNotify(const FString& NotifyName)
+{
+	if (!AnimNotifyFunction.valid())
+	{
+		return;
+	}
+
+	sol::protected_function Function = AnimNotifyFunction;
+	sol::protected_function_result Result = Function(NotifyName);
+	if (!Result.valid())
+	{
+		sol::error Error = Result;
+		HTR_LOG(Error, "[Lua] OnAnimNotify: {}", Error.what());
+	}
+}
+
 void UScriptComponent::BindCollisionEvents()
 {
 	UnbindCollisionEvents();
@@ -346,6 +362,7 @@ bool UScriptComponent::LoadScript()
 	OverlapFunction = Environment["OnOverlap"];
 	EndOverlapFunction = Environment["OnEndOverlap"];
 	HitFunction = Environment["OnHit"];
+	AnimNotifyFunction = Environment["OnAnimNotify"];
 
 	return true;
 }
@@ -445,6 +462,7 @@ bool UScriptComponent::ReloadScript()
 	OverlapFunction = Environment["OnOverlap"];
 	EndOverlapFunction = Environment["OnEndOverlap"];
 	HitFunction = Environment["OnHit"];
+	AnimNotifyFunction = Environment["OnAnimNotify"];
 
 	sol::protected_function ReloadFunction = Environment["OnReload"];
 
