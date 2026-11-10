@@ -60,7 +60,7 @@ ULuaAnimInstance* RequireLuaAnimInstance(UAnimInstance* Instance)
 	ULuaAnimInstance* LuaInstance = Cast<ULuaAnimInstance>(Instance);
 	if (!LuaInstance)
 	{
-		throw std::runtime_error("Lua root access requires an instance prepared by mesh:CreateAnimInstance()");
+		throw std::runtime_error("Lua graphs require Default Anim Instance or a Custom class derived from ULuaAnimInstance");
 	}
 	return LuaInstance;
 }
@@ -585,10 +585,10 @@ std::shared_ptr<FLuaAnimationGraphBindings> BindAnimationGraphAPI(sol::state& Lu
 		{
 			throw std::runtime_error("CreateAnimInstance requires a registered SkeletalMeshComponent with a mesh");
 		}
-		// Component가 실제 Instance를 소유한다. 이미 Lua 어댑터면 기존 그래프를 유지한다.
-		Component.SetAnimInstanceClass(ULuaAnimInstance::StaticClass());
+		// Component의 모드·클래스를 존중한다. Custom의 Named Notify 함수도 같은 객체에서 실행한다.
 		Component.InitAnim(false);
-		return FLuaAnimInstance(Component.GetAnimInstance(), Bindings);
+		ULuaAnimInstance* Instance = RequireLuaAnimInstance(Component.GetAnimInstance());
+		return FLuaAnimInstance(Instance, Bindings);
 	});
 	Mesh.set_function("GetAnimInstance", [Bindings](const USkeletalMeshComponent& Component, sol::this_state State)
 	{
