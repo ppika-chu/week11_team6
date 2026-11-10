@@ -5,6 +5,8 @@
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimState.h"
 #include "Animation/AnimTransition.h"
+#include "Animation/AnimSequence.h"
+#include "Animation/AnimationRuntime.h"
 #include "Animation/AnimNodes/AnimNode_SequencePlayer.h"
 #include "Animation/AnimNodes/AnimNode_BlendSpacePlayer.h"
 #include "Animation/AnimNodes/AnimNode_StateMachine.h"
@@ -59,6 +61,7 @@ class ULuaAnimInstance final : public UAnimInstance
 public:
 	void SetGraphRoot(FAnimNode_Base* InRoot)
 	{
+		ClearMontages();
 		GraphRoot = InRoot;
 		if (IsInitialized())
 		{
@@ -67,11 +70,139 @@ public:
 	}
 	FAnimNode_Base* GetGraphRoot() const { return GraphRoot; }
 
+	void PlayMontage(FAnimNode_Slot* Slot, UAnimSequence* Sequence, float PlayRate, float BlendIn, float BlendOut, bool bLooping)
+	{
+		FAnimPose Pose;
+		Sequence->GetAnimationPose(Pose, FAnimExtractContext(0.0f));
+		const USkeletalMeshComponent* Component = GetSkelMeshComponent();
+		const USkeletalMesh* Mesh = Component ? Component->GetSkeletalMesh() : nullptr;
+		if (!Mesh || Pose.LocalTransforms.Num() != Mesh->RefSkeleton.GetNum())
+		{
+			throw std::runtime_error("Montage pose bone count does not match the skeletal mesh");
+		}
+		StopMontage(Slot, 0.0f);
+		FActiveMontage& Playback = Montages.emplace_back();
+		Playback.Slot = Slot;
+		Playback.Sequence = Sequence;
+		Playback.PlayRate = PlayRate;
+		Playback.BlendIn = BlendIn;
+		Playback.BlendOut = BlendOut;
+		Playback.bLooping = bLooping;
+		Playback.CurrentTime = 0.0f;
+		Playback.ElapsedTime = 0.0f;
+		// 재생 직후 평가가 일어나도 이전 Montage 포즈가 남지 않게 한다.
+		Slot->SetSlotPose(Pose);
+		Slot->SetMontageWeight(BlendIn == 0.0f ? 1.0f : 0.0f);
+	}
+
+	void StopMontage(FAnimNode_Slot* Slot, float BlendOut)
+	{
+		for (FActiveMontage& Playback : Montages)
+		{
+			if (Playback.Slot != Slot) { continue; }
+			if (BlendOut > 0.0f)
+			{
+				Playback.bStopping = true;
+				Playback.StopDuration = BlendOut;
+				Playback.StopElapsed = 0.0f;
+				Playback.StopStartWeight = Slot->GetMontageWeight();
+			}
+			else { ClearMontagePose(Slot); }
+		}
+		if (BlendOut <= 0.0f)
+		{
+			std::erase_if(Montages, [Slot](const FActiveMontage& Playback) { return Playback.Slot == Slot; });
+		}
+	}
+
+	bool IsMontagePlaying(const FAnimNode_Slot* Slot) const
+	{
+		return std::any_of(Montages.begin(), Montages.end(), [Slot](const FActiveMontage& Playback) { return Playback.Slot == Slot; });
+	}
+
+	float GetMontageTime(const FAnimNode_Slot* Slot) const
+	{
+		for (const FActiveMontage& Playback : Montages)
+		{
+			if (Playback.Slot == Slot) { return Playback.CurrentTime; }
+		}
+		return 0.0f;
+	}
+
 protected:
 	FAnimNode_Base* GetCustomRootNode() override { return GraphRoot; }
+	void NativeUninitializeAnimation() override { ClearMontages(); }
+	void NativeUpdateAnimation(float DeltaSeconds) override
+	{
+		for (FActiveMontage& Playback : Montages)
+		{
+			const float Length = Playback.Sequence->GetPlayLength();
+			if (Length <= 0.0f) { ClearMontagePose(Playback.Slot); Playback.bFinished = true; continue; }
+			const float Step = FMath::Max(0.0f, DeltaSeconds);
+			float NextTime = Playback.CurrentTime;
+			FAnimationRuntime::AdvanceTime(Playback.bLooping,
+				Step * Playback.PlayRate * Playback.Sequence->RateScale, NextTime, Length);
+			Playback.ElapsedTime += Step;
+			const float InWeight = Playback.BlendIn > 0.0f
+				? FMath::Clamp(Playback.ElapsedTime / Playback.BlendIn, 0.0f, 1.0f) : 1.0f;
+			const float RemainingSeconds = (Length - NextTime) /
+				(Playback.PlayRate * Playback.Sequence->RateScale);
+			const float OutWeight = Playback.bLooping ? 1.0f :
+				(Playback.BlendOut > 0.0f
+					? FMath::Clamp(RemainingSeconds / Playback.BlendOut, 0.0f, 1.0f)
+					: (NextTime < Length ? 1.0f : 0.0f));
+			float Weight = FMath::Min(InWeight, OutWeight);
+			if (Playback.bStopping)
+			{
+				Playback.StopElapsed += Step;
+				Weight = FMath::Min(Weight, Playback.StopStartWeight *
+					FMath::Clamp(1.0f - Playback.StopElapsed / Playback.StopDuration, 0.0f, 1.0f));
+			}
+			SequenceAdvanceImmediate(Playback.Sequence, Playback.bLooping, Playback.PlayRate,
+				Step, Playback.CurrentTime, Weight);
+			if (Weight <= 0.0f && (Playback.bStopping || (!Playback.bLooping && NextTime >= Length)))
+			{
+				ClearMontagePose(Playback.Slot);
+				Playback.bFinished = true;
+				continue;
+			}
+			FAnimPose Pose;
+			Playback.Sequence->GetAnimationPose(Pose, FAnimExtractContext(Playback.CurrentTime));
+			Playback.Slot->SetSlotPose(Pose);
+			Playback.Slot->SetMontageWeight(Weight);
+		}
+		std::erase_if(Montages, [](const FActiveMontage& Playback) { return Playback.bFinished; });
+	}
 
 private:
+	struct FActiveMontage
+	{
+		FAnimNode_Slot* Slot = nullptr;
+		UAnimSequence* Sequence = nullptr;
+		float CurrentTime = 0.0f;
+		float ElapsedTime = 0.0f;
+		float PlayRate = 1.0f;
+		float BlendIn = 0.0f;
+		float BlendOut = 0.0f;
+		bool bLooping = false;
+		bool bStopping = false;
+		bool bFinished = false;
+		float StopDuration = 0.0f;
+		float StopElapsed = 0.0f;
+		float StopStartWeight = 0.0f;
+	};
+	static void ClearMontagePose(FAnimNode_Slot* Slot)
+	{
+		Slot->SetMontageWeight(0.0f);
+		Slot->SetSlotPose(FAnimPose{});
+	}
+	void ClearMontages()
+	{
+		for (FActiveMontage& Playback : Montages) { ClearMontagePose(Playback.Slot); }
+		Montages.clear();
+	}
 	FAnimNode_Base* GraphRoot = nullptr;
+	std::vector<FActiveMontage> Montages;
 };
 
 ULuaAnimInstance* RequireLuaAnimInstance(UAnimInstance* Instance)
@@ -279,6 +410,19 @@ T* FindGraphAsset(const FLuaAnimInstance& Owner, const FString& Path)
 	return Asset;
 }
 
+ULuaAnimInstance* RequireAttachedSlot(const TLuaAnimNode<FAnimNode_Slot>& Node)
+{
+	auto* Instance = RequireLuaAnimInstance(Node.Owner.Get());
+	const auto Root = Node.Owner.Bindings->Roots.find(Node.Owner.UUID);
+	if (Root == Node.Owner.Bindings->Roots.end() ||
+		Instance->GetGraphRoot() != Root->second.Node ||
+		!Reaches(Root->second.Lifetime.get(), Node.Lifetime.get()))
+	{
+		throw std::runtime_error("Montage playback requires a Slot connected to the current Root");
+	}
+	return Instance;
+}
+
 sol::object CreateNode(const FLuaAnimInstance& Instance, const FString& Type, sol::this_state State)
 {
 	Instance.Get();
@@ -376,6 +520,70 @@ void BindNodes(sol::state& Lua)
 	Slot.set_function("GetSlotName", [](const TLuaAnimNode<FAnimNode_Slot>& Node) { return Node.Get()->GetSlotName().ToString(); });
 	BindSetter(Slot, "SetMontageWeight", &FAnimNode_Slot::SetMontageWeight);
 	BindGetter(Slot, "GetMontageWeight", &FAnimNode_Slot::GetMontageWeight);
+	// 이 엔진에는 UAnimMontage asset이 아직 없다. 단일 UAnimSequence를 Slot에 재생하는 경량 경로다.
+	Slot.set_function("PlayMontage", [](const TLuaAnimNode<FAnimNode_Slot>& Node, const FString& SequencePath,
+		sol::optional<float> PlayRate, sol::optional<float> BlendIn, sol::optional<float> BlendOut, sol::optional<bool> Loop)
+	{
+		auto* Instance = RequireAttachedSlot(Node);
+		const float Rate = PlayRate.value_or(1.0f);
+		const float In = BlendIn.value_or(0.12f);
+		const float Out = BlendOut.value_or(0.18f);
+		if (!std::isfinite(Rate) || Rate <= 0.0f || !std::isfinite(In) || In < 0.0f ||
+			!std::isfinite(Out) || Out < 0.0f)
+		{
+			throw std::runtime_error("PlayMontage requires positive PlayRate and non-negative finite blend times");
+		}
+		UAnimSequence* Sequence = FindGraphAsset<UAnimSequence>(Node.Owner, SequencePath);
+		if (Sequence->GetPlayLength() <= 0.0f || !std::isfinite(Sequence->RateScale) || Sequence->RateScale <= 0.0f)
+		{
+			throw std::runtime_error("PlayMontage requires a sequence with positive duration and RateScale");
+		}
+		Instance->PlayMontage(Node.Get(), Sequence, Rate, In, Out, Loop.value_or(false));
+	});
+	Slot.set_function("StopMontage", [](const TLuaAnimNode<FAnimNode_Slot>& Node, sol::optional<float> BlendOut)
+	{
+		const float Duration = BlendOut.value_or(0.18f);
+		if (!std::isfinite(Duration) || Duration < 0.0f)
+		{
+			throw std::runtime_error("StopMontage blend time must be finite and non-negative");
+		}
+		RequireAttachedSlot(Node)->StopMontage(Node.Get(), Duration);
+	});
+	Slot.set_function("IsMontagePlaying", [](const TLuaAnimNode<FAnimNode_Slot>& Node)
+	{
+		return RequireAttachedSlot(Node)->IsMontagePlaying(Node.Get());
+	});
+	Slot.set_function("GetMontageTime", [](const TLuaAnimNode<FAnimNode_Slot>& Node)
+	{
+		return RequireAttachedSlot(Node)->GetMontageTime(Node.Get());
+	});
+	// 별도 재생기에서 계산한 포즈를 공급할 때 사용하는 단일 Sequence 샘플링 입구.
+	Slot.set_function("SetMontagePoseFromSequence", [](const TLuaAnimNode<FAnimNode_Slot>& Node,
+		const FString& SequencePath, float Time, float Weight)
+	{
+		auto* Instance = RequireAttachedSlot(Node);
+		if (!std::isfinite(Time) || !std::isfinite(Weight) || Weight < 0.0f || Weight > 1.0f)
+		{
+			throw std::runtime_error("Montage pose time and weight must be finite; weight must be within [0, 1]");
+		}
+		UAnimSequence* Sequence = FindGraphAsset<UAnimSequence>(Node.Owner, SequencePath);
+		FAnimPose Pose;
+		Sequence->GetAnimationPose(Pose, FAnimExtractContext(FMath::Clamp(Time, 0.0f, Sequence->GetPlayLength())));
+		const USkeletalMesh* Mesh = Node.Owner.Get()->GetSkelMeshComponent()->GetSkeletalMesh();
+		if (Pose.LocalTransforms.Num() != Mesh->RefSkeleton.GetNum())
+		{
+			throw std::runtime_error("Montage pose bone count does not match the skeletal mesh");
+		}
+		Instance->StopMontage(Node.Get(), 0.0f);
+		Node.Get()->SetSlotPose(Pose);
+		Node.Get()->SetMontageWeight(Weight);
+	});
+	Slot.set_function("ClearMontagePose", [](const TLuaAnimNode<FAnimNode_Slot>& Node)
+	{
+		RequireAttachedSlot(Node)->StopMontage(Node.Get(), 0.0f);
+		Node.Get()->SetMontageWeight(0.0f);
+		Node.Get()->SetSlotPose(FAnimPose{});
+	});
 
 	auto Blend = RegisterNode<FAnimNode_TwoWayBlend>(Lua, "FAnimNode_TwoWayBlend");
 	using FBlendHandle = TLuaAnimNode<FAnimNode_TwoWayBlend>;
