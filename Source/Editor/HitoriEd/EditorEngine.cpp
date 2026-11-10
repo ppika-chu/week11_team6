@@ -211,16 +211,29 @@ bool UEditorEngine::Init()
 		});
 	FSequencePanel* SequencePanel = EditorUI->AddEditorPanel<FSequencePanel>();
 	SequencePanel->SetSequenceActorProvider([this]() -> ASequenceActor*
+	{
+		auto* Selected = Cast<ASequenceActor>(OutlinerPanel->GetSelectedActor());
+		if (Selected && Selected->GetWorld() == EditorWorld && !Selected->IsActorBeingDestroyed())
 		{
-		ASequenceActor* Actor = Cast<ASequenceActor>(OutlinerPanel->GetSelectedActor());
-		return Actor && Actor->GetWorld() == EditorWorld && !Actor->IsActorBeingDestroyed() ? Actor : nullptr; });
+			EditedSequenceActorUUID = Selected->GetUUID();
+		}
+
+		ASequenceActor* Edited = FindEditorSequenceActor(EditedSequenceActorUUID);
+		if (!Edited)
+		{
+			EditedSequenceActorUUID = 0;
+		}
+
+		return Edited;
+	});
 	SequencePanel->SetCreateSequenceActorCallback([this]()
+	{
+		if (IsPlaying() || !EditorWorld){ return; }
+		if (ASequenceActor* Actor = EditorWorld->SpawnActor<ASequenceActor>())
 		{
-		if (IsPlaying() || !EditorWorld){ return;
-}
-		if (ASequenceActor* Actor = EditorWorld->SpawnActor<ASequenceActor>()){
 			OutlinerPanel->SelectActor(Actor);
-} });
+		}
+	});
 	SequencePanel->SetViewportCameraProvider([this](CameraKey& OutKey)
 		{
 		int32 ViewIndex = ViewportsPanel->GetActiveViewIndex();
@@ -1549,6 +1562,7 @@ void UEditorEngine::StartPlayInEditorSession()
 		PIEViewIndex = ViewportsPanel->GetEditorViewIndex();
 	}
 
+	ASequenceActor::RestoreAllAnimatedComponents(EditorWorld);
 	FWorldContext& PIEContext = CreateNewWorldContext(EWorldType::PIE);
 	PlayWorld = CreatePIEWorldByDuplication(PIEContext, EditorWorld);
 
@@ -1866,6 +1880,24 @@ void UEditorEngine::OnActorContentDestroying(const AActor* Owner)
 	}
 }
 
+ASequenceActor* UEditorEngine::FindEditorSequenceActor(uint32 UUID) const
+{
+	if (!UUID || !EditorWorld || !EditorWorld->GetPersistentLevel())
+	{
+		return nullptr;
+	}
+
+	for (AActor* Actor : EditorWorld->GetPersistentLevel()->GetActors())
+	{
+		if (Actor && Actor->GetUUID() == UUID && !Actor->IsActorBeingDestroyed())
+		{
+			return Cast<ASequenceActor>(Actor);
+		}
+	}
+
+	return nullptr;
+}
+
 // 씬 변경으로 무효화된 에디터의 선택 참조를 모두 해제한다.
 void UEditorEngine::ResetSceneSelection()
 {
@@ -1915,6 +1947,7 @@ void UEditorEngine::SaveCurrentScene()
 		HTR_LOG(Warning, "Cannot save during PIE. Stop the play session first.");
 		return;
 	}
+	ASequenceActor::RestoreAllAnimatedComponents(EditorWorld);
 	FEditorFileUtils::SaveScene(EditorWorld);
 }
 
@@ -1926,6 +1959,7 @@ void UEditorEngine::SaveSceneAs()
 		HTR_LOG(Warning, "Cannot save during PIE. Stop the play session first.");
 		return;
 	}
+	ASequenceActor::RestoreAllAnimatedComponents(EditorWorld);
 	FEditorFileUtils::SaveSceneAs(EditorWorld);
 }
 

@@ -1,4 +1,4 @@
-﻿#include "EnginePCH.h"
+#include "EnginePCH.h"
 #include "Editor/Outliner/OutlinerPanel.h"
 
 #include "Engine/Level.h"
@@ -7,6 +7,7 @@
 #include "Components/ActorComponent.h"
 #include "Components/PrimitiveComponent.h"
 #include "Editor/HitoriEd/EditorDragDrop.h"
+#include "Sequence/SequenceActor.h"
 #include "UObject/UObjectGlobals.h"
 
 bool FOutlinerPanel::Init()
@@ -179,7 +180,9 @@ void FOutlinerPanel::DrawActorRenameField(AActor* Actor)
 		// 같은 Outer의 같은 이름은 NewObject가 재활용하고, 뷰 타깃 복원도 이름으로 찾으므로 겹치면 안 된다.
 		if (!StaticFindObjectFast(nullptr, Actor->GetOuter(), NewName))
 		{
+			const FString OldName = Actor->GetName();
 			Actor->SetName(NewName);
+			ASequenceActor::NotifyActorRenamed(Actor, OldName);
 		}
 		else
 		{

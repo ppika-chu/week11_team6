@@ -42,6 +42,8 @@
 #include "Math/Color.h"
 #include <algorithm>
 
+#include "Sequence/SequenceActor.h"
+
 
 namespace
 {
@@ -2259,7 +2261,9 @@ void FDetailsPanel::DrawComponentRenameField(UActorComponent* Component)
 		// 같은 Outer의 같은 이름은 NewObject가 재활용하므로 컴포넌트가 아닌 객체까지 함께 검사한다.
 		if (Owner && !Owner->FindComponentByName(NewName) && !StaticFindObjectFast(nullptr, Owner, NewName))
 		{
+			const FString OldName = Component->GetName();
 			Component->SetName(NewName);
+			ASequenceActor::NotifyComponentRenamed(Component, OldName);
 		}
 		else
 		{

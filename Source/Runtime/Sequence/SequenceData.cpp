@@ -1,6 +1,7 @@
 #include "EnginePCH.h"
 #include "SequenceData.h"
 #include "Serialization/StructuredArchive.h"
+#include "Animation/AnimSequence.h"
 #include <cmath>
 #include <limits>
 #include <type_traits>
@@ -97,6 +98,59 @@ void SerializeSections(FStructuredArchive::FRecord Record, std::vector<SectionTy
 		}
 	}
 }
+
+void SerializeAnimationSections(FStructuredArchive::FRecord Record, std::vector<FAnimationSection>& Sections)
+{
+	FArchive& Ar = Record.GetUnderlyingArchive();
+	int32 Count = static_cast<int32>(Sections.size());
+	auto Array = Record.EnterArray("Sections", Count);
+	if (Count < 0)
+	{
+		Ar.SetError();
+		return;
+	}
+
+	if (Ar.IsLoading())
+	{
+		Sections.resize(Count);
+	}
+
+	for (auto& Section : Sections)
+	{
+		auto Item = Array.EnterElement().EnterRecord();
+		Item << SA_VALUE("StartFrame", Section.StartFrame);
+
+		UObject* Asset = Section.Animation;
+		Item << SA_VALUE("Animation", Asset);
+		if (Ar.IsLoading())
+		{
+			Section.Animation = Cast<UAnimSequence>(Asset);
+		}
+	}
+}
+}
+
+void FSequenceBinding::Serialize(FStructuredArchive::FRecord Record)
+{
+	Record << SA_VALUE("ActorName", ActorName) << SA_VALUE("ComponentName", ComponentName);
+}
+
+int32 FAnimationSection::GetLengthInFrames(int FPS) const
+{
+	const float Length = Animation ? Animation->GetPlayLength() : 0.0f;
+	if (FPS <= 0 || !std::isfinite(Length) || Length <= 0.0f)
+	{
+		return 0;
+	}
+
+	const double Frames = std::ceil(static_cast<double>(Length) * static_cast<double>(FPS));
+	return static_cast<int32>(FMath::Clamp<double>(Frames, 1.0, std::numeric_limits<int32>::max()));
+}
+
+int32 FAnimationSection::GetEndFrame(int FPS) const
+{
+	const int64 End = static_cast<int64>(StartFrame) + static_cast<int64>(GetLengthInFrames(FPS));
+	return static_cast<int32>(FMath::Min<int64>(End, std::numeric_limits<int32>::max()));
 }
 
 void FSequenceData::Serialize(FStructuredArchive::FRecord Record)
@@ -111,7 +165,7 @@ void FSequenceData::Serialize(FStructuredArchive::FRecord Record)
 	}
 	int32 Count = static_cast<int32>(Rows.size());
 	auto Tracks = Record.EnterArray("Tracks", Count);
-	if (Count < 0 || Count > 2)
+	if (Count < 0)
 	{
 		Ar.SetError();
 		return;
@@ -128,7 +182,10 @@ void FSequenceData::Serialize(FStructuredArchive::FRecord Record)
 	for (auto& Row : Rows)
 	{
 		auto Track = Tracks.EnterElement().EnterRecord();
-		FString Type = std::holds_alternative<FCameraTimelineTrack>(Row.Rows) ? "Camera" : "Fade";
+		FString Type = std::holds_alternative<FCameraTimelineTrack>(Row.Rows) ? "Camera"
+			: std::holds_alternative<FFadeTimelineTrack>(Row.Rows)            ? "Fade"
+																			  : "Animation";
+
 		Track << SA_VALUE("Name", Row.Name) << SA_VALUE("Color", Row.Color) << SA_VALUE("Type", Type);
 		if (Type == "Camera" && !HasCamera)
 		{
@@ -157,6 +214,16 @@ void FSequenceData::Serialize(FStructuredArchive::FRecord Record)
 			}
 			SerializeSections(Track, std::get<FFadeTimelineTrack>(Row.Rows).FadeSections);
 		}
+		else if (Type == "Animation")
+		{
+			if (Ar.IsLoading())
+			{
+				Row.Rows = FAnimationTimelineTrack{};
+			}
+			auto& AnimationTrack = std::get<FAnimationTimelineTrack>(Row.Rows);
+			AnimationTrack.Binding.Serialize(Track.EnterRecord("Binding"));
+			SerializeAnimationSections(Track, AnimationTrack.AnimSections);
+		}
 		else
 		{
 			Ar.SetError();
@@ -167,17 +234,116 @@ void FSequenceData::Serialize(FStructuredArchive::FRecord Record)
 			return;
 		}
 		std::visit([&](auto& TypedTrack)
+		{
+			using TrackType = std::decay_t<decltype(TypedTrack)>;
+			if constexpr (std::is_same_v<TrackType, FAnimationTimelineTrack>)
 			{
-			const auto& Sections = [&]() -> const auto&
+				for (const auto& Section : TypedTrack.AnimSections)
+				{
+					if (Section.StartFrame < StartFrame || Section.StartFrame > End)
+					{
+						Ar.SetError();
+					}
+				}
+			}
+			else
 			{
-				if constexpr (std::is_same_v<std::decay_t<decltype(TypedTrack)>, FCameraTimelineTrack>){ return TypedTrack.CamSections;
-}
-				else{ return TypedTrack.FadeSections;
-}
-			}();
-			for (const auto& Section : Sections){
-				for (int Index = 0; Index < Section.KeyCount; ++Index){
-					if (Section.KeyFrames[Index] < StartFrame || Section.KeyFrames[Index] > End){ Ar.SetError();
-}}} }, Row.Rows);
+				const auto& Sections = [&]() -> const auto&
+				{
+					if constexpr (std::is_same_v<TrackType, FCameraTimelineTrack>)
+					{
+						return TypedTrack.CamSections;
+					}
+					else
+					{
+						return TypedTrack.FadeSections;
+					}
+				}();
+
+				for (const auto& Section : Sections)
+				{
+					for (int Index = 0; Index < Section.KeyCount; ++Index)
+					{
+						if (Section.KeyFrames[Index] < StartFrame || Section.KeyFrames[Index] > End)
+						{
+							Ar.SetError();
+						}
+					}
+				}
+			}
+		}, Row.Rows);
 	}
+
+	if (Ar.IsLoading() && !Ar.IsError())
+	{
+		RemoveInvalidAnimationData();
+	}
+}
+
+FAnimationTimelineTrack* FSequenceData::FindAnimationTrack(const FSequenceBinding& Binding)
+{
+	for (auto& Row : Rows)
+	{
+		auto* Track = std::get_if<FAnimationTimelineTrack>(&Row.Rows);
+		if (Track && Track->Binding.ActorName == Binding.ActorName && Track->Binding.ComponentName == Binding.ComponentName)
+		{
+			return Track;
+		}
+	}
+	return nullptr;
+}
+
+FAnimationTimelineTrack& FSequenceData::FindOrAddAnimationTrack(const FSequenceBinding& Binding)
+{
+	if (FAnimationTimelineTrack* Existing = FindAnimationTrack(Binding))
+	{
+		return *Existing;
+	}
+
+	FAnimationTimelineTrack Track;
+	Track.Binding = Binding;
+	Rows.push_back({
+		.Name = Binding.ActorName,
+		.Color = FLinearColor(0.35f, 0.75f, 0.45f, 0.30f),
+		.Rows = std::move(Track),
+	});
+	return std::get<FAnimationTimelineTrack>(Rows.back().Rows);
+}
+
+void FSequenceData::RemoveInvalidAnimationData()
+{
+	std::vector<const FSequenceBinding*> SeenBindings;
+	std::erase_if(Rows, [&](FTimeline& Row)
+	{
+		auto* Track = std::get_if<FAnimationTimelineTrack>(&Row.Rows);
+		if (!Track)
+		{
+			return false;
+		}
+
+		const bool bDuplicate = std::ranges::any_of(SeenBindings, [&](const FSequenceBinding* Seen)
+		{
+			return Seen->ActorName == Track->Binding.ActorName && Seen->ComponentName == Track->Binding.ComponentName;
+		});
+
+		if (!Track->Binding.IsSet() || bDuplicate)
+		{
+			HTR_LOG(Warning, "[Sequence] Dropped animation track '{}'", Row.Name);
+			return true;
+		}
+		
+		std::erase_if(Track->AnimSections, [&](const FAnimationSection& Section)
+		{
+			if (!Section.Animation)
+			{
+				HTR_LOG(Warning, "[Sequence] Dropped animation section on '{}' (animation not found)", Track->Binding.ActorName);
+				return true;
+			}
+			return false;
+		});
+
+		Row.Name = Track->Binding.ActorName;
+		SeenBindings.push_back(&Track->Binding);
+		return false;
+	});
 }

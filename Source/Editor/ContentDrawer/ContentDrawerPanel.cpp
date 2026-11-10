@@ -1,6 +1,8 @@
 #include "EnginePCH.h"
 #include "Asset/FbxImporter/FbxPath.h"
 #include "Editor/ContentDrawer/ContentDrawerPanel.h"
+
+#include "Animation/AnimSequence.h"
 #include "Editor/EditorUI/EditorUIScale.h"
 #include "Asset/AssetManager.h"
 #include "Text/Font.h"
@@ -175,6 +177,7 @@ void FContentDrawerPanel::OnRender()
 				UTexture2D* TextureAsset = nullptr;
 				UFont* FontAsset = nullptr;
 				URenderAsset* FileAsset = nullptr;	// 더블클릭으로 열 에셋
+				UAnimSequence* AnimationAsset = nullptr;
 
 				// 폴더 또는 파일 아이콘 표시
 				if (bIsDirectory)
@@ -204,6 +207,8 @@ void FContentDrawerPanel::OnRender()
 						// 폰트는 글리프 아틀라스를 그대로 미리보기로 쓴다
 						Thumbnail = FontAsset->AtlasTexture;
 					}
+
+					AnimationAsset = Cast<UAnimSequence>(Asset);
 
 					if (Thumbnail == nullptr)
 					{
@@ -241,6 +246,12 @@ void FContentDrawerPanel::OnRender()
 
 					DrawFullName(FilenameString);
 
+					ImGui::EndDragDropSource();
+				}
+				if (AnimationAsset && ImGui::BeginDragDropSource())
+				{
+					ImGui::SetDragDropPayload(EditorDragDrop::AnimSequence, &AnimationAsset, sizeof(UAnimationAsset*));
+					DrawFullName(FilenameString);
 					ImGui::EndDragDropSource();
 				}
 				// 스크립트는 에셋 객체가 없으므로 파일 경로를 그대로 싣는다.

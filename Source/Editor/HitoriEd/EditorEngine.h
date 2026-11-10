@@ -222,6 +222,9 @@ private:
 	bool bIsPaused = false;
 	// Shift+F1로 잠금을 풀었다. 뷰포트를 클릭하면 다시 잠근다.
 	bool bPIEMouseReleased = false;
+	// Sequence 패널이 편집 중인 Actor
+	uint32 EditedSequenceActorUUID = 0;
+	ASequenceActor* FindEditorSequenceActor(uint32 UUID) const;
 
 	void ResetSceneSelection();
 	// 입력 대상 View의 카메라를 액터 전체가 들어오게 옮긴다. PIE 게임 카메라를 쓰는 View나 다른 월드를 그리는 View는 옮기지 않는다.

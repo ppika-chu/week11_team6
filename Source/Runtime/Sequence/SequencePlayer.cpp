@@ -4,6 +4,8 @@
 #include <cmath>
 #include <limits>
 
+#include "Animation/AnimSequence.h"
+
 namespace
 {
 struct FCameraControlPoint
@@ -356,5 +358,38 @@ bool FSequencePlayer::GetCurrentFadeAlpha(float& OutAlpha) const
 		return false;
 	}
 	OutAlpha = std::lerp(ActiveSection->KeyFade.StartAlpha, ActiveSection->KeyFade.EndAlpha, Playratio);
+	return true;
+}
+
+bool FSequencePlayer::EvaluateAnimationTrack(const FAnimationTimelineTrack& Track, FAnimationSample& OutSample) const
+{
+	const int FPS = SequenceData.PlaybackFPS;
+	if (FPS <= 0)
+	{
+		return false;
+	}
+
+	const FAnimationSection* Active = nullptr;
+	for (const FAnimationSection& Section : Track.AnimSections)
+	{
+		if (!Section.Animation || Section.StartFrame > mSampleFrame)
+		{
+			continue;
+		}
+		if (!Active || Section.StartFrame >= Active->StartFrame)
+		{
+			Active = &Section;
+		}
+	}
+	if (!Active)
+	{
+		return false;
+	}
+
+	const double Seconds = (mSampleFrame - Active->StartFrame) / static_cast<double>(FPS);
+	const double Length = Active->Animation->GetPlayLength();
+	OutSample.Animation = Active->Animation;
+	OutSample.Time = static_cast<float>(FMath::Clamp(Seconds, 0.0, Length));
+
 	return true;
 }

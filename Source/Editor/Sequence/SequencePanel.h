@@ -23,6 +23,8 @@ public:
 
 private:
 	static bool IsFadeLayoutValid(const FFadeTimelineTrack& Track);
+	static bool IsAnimationLayoutValid(const FAnimationTimelineTrack& Track, int FPS);
+	void SetPreviewActor(ASequenceActor* Actor);
 	// EditorEngine에 요청해 편집할 Actor를 얻거나 새 Actor를 만든다. 패널이 Actor를 소유하지 않는다.
 	std::function<ASequenceActor*()> SequenceActorProvider;
 	std::function<void()> CreateSequenceActorCallback;
@@ -38,4 +40,5 @@ private:
 	bool bResetSequenceSelection = false;
 	// Actor 주소를 보관하지 않고 식별자만 비교해 편집 대상 변경을 감지한다.
 	uint32 EditedActorUUID = 0;
+	uint32 PreviewActorUUID = 0; // 애니메이션 미리보기 적용 중인 Actor
 };

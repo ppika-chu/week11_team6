@@ -2,8 +2,14 @@
 #include "SequencePanel.h"
 #include "Editor/EditorUI/EditorUIScale.h"
 #include "Sequence/SequenceActor.h"
+#include "Sequence/SequenceBinding.h"
 #include <type_traits>
 #include <cmath>
+
+#include "Animation/AnimSequence.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Editor/HitoriEd/EditorDragDrop.h"
+#include "Render/SkeletalMesh.h"
 
 namespace
 {
@@ -27,6 +33,35 @@ void AlignCameraRotation(FCameraSection& Section)
 		}
 		Section.KeyCam[1].Rotation[Axis] = Start + Delta;
 	}
+}
+
+int AddAnimationTrack(ASequenceActor& SequenceActor, AActor* Target)
+{
+	auto* Component = Target ? Target->FindComponentByClass<USkeletalMeshComponent>() : nullptr;
+	FSequenceBinding Binding;
+	if (!Component || !SequenceBinding::Make(Component, SequenceActor.GetLevel(), Binding))
+	{
+		return -1;
+	}
+
+	auto& Data = SequenceActor.GetSequencePlayer().GetSequenceData();
+	const FAnimationTimelineTrack& Track = Data.FindOrAddAnimationTrack(Binding);
+	for (int Index = 0; Index < static_cast<int>(Data.Rows.size()); ++Index)
+	{
+		if (std::get_if<FAnimationTimelineTrack>(&Data.Rows[Index].Rows) == &Track)
+		{
+			return Index;
+		}
+	}
+
+	return -1;
+}
+
+bool IsAnimationCompatible(const FAnimationTimelineTrack& Track, const UAnimSequence* Animation, const ULevel* Level)
+{
+	const USkeletalMeshComponent* Component = SequenceBinding::ResolveComponent(Track.Binding, Level);
+	const USkeletalMesh* Mesh = Component ? Component->GetSkeletalMesh() : nullptr;
+	return Animation && Mesh && Animation->GetSkeleton() && Animation->GetSkeleton() == Mesh->Skeleton;
 }
 }
 
@@ -68,6 +103,24 @@ bool FSequencePanel::IsFadeLayoutValid(const FFadeTimelineTrack& Track)
 	return true;
 }
 
+bool FSequencePanel::IsAnimationLayoutValid(const FAnimationTimelineTrack& Track, int FPS)
+{
+	const auto& Sections = Track.AnimSections;
+	for (size_t Index = 0; Index < Sections.size(); ++Index)
+	{
+		for (size_t Other = 0; Other < Index; ++Other)
+		{
+			if (Sections[Index].StartFrame < Sections[Other].GetEndFrame(FPS) && 
+				Sections[Other].StartFrame < Sections[Index].GetEndFrame(FPS))
+			{
+				return false;
+			}
+		}
+	}
+
+	return true;
+}
+
 bool FSequencePanel::Init()
 {
 	return true;
@@ -87,6 +140,7 @@ void FSequencePanel::OnRender()
 {
 	// 패널 자체에는 연출 데이터를 보관하지 않는다. 매번 선택된 Actor를 조회해 편집한다.
 	ASequenceActor* Actor = SequenceActorProvider ? SequenceActorProvider() : nullptr;
+	SetPreviewActor(Actor && IsOpen() ? Actor : nullptr);
 	if (!Actor)
 	{
 		EditedActorUUID = 0;
@@ -352,8 +406,15 @@ void FSequencePanel::OnRender()
 						PreviewPlayer.Pause();
 						bFadeValueEdited = false;
 					}
+
+					int PendingRemoveTrack = -1;
+					int PendingRemoveSectionRow = -1;
+					size_t PendingRemoveSection = 0;
 					for (FTimeline& Row : Rows)
 					{
+						int RowIndex = static_cast<int>(&Row - Rows.data());
+						ImGui::PushID(RowIndex);
+
 						auto* FadeTrack = std::get_if<FFadeTimelineTrack>(&Row.Rows);
 						// 드래그 중 여러 키가 함께 이동해도 트랙 전체를 검증한 뒤 승인한다.
 						const auto PreviousFadeSections = FadeTrack ? FadeTrack->FadeSections : std::vector<FFadeSection>{};
@@ -362,6 +423,51 @@ void FSequencePanel::OnRender()
 						if (ImGui::BeginNeoTimelineEx(Row.Name.c_str(), nullptr, ImGuiNeoTimelineFlags_None,
 								FadeTrack ? &NewFadeKeyAlpha : nullptr))
 						{
+							auto* AnimationTrack = std::get_if<FAnimationTimelineTrack>(&Row.Rows);
+							if (AnimationTrack && ImGui::BeginDragDropTarget())
+							{
+								if (const ImGuiPayload* Payload = ImGui::AcceptDragDropPayload(EditorDragDrop::AnimSequence, ImGuiDragDropFlags_AcceptBeforeDelivery))
+								{
+									UAnimSequence* Animation = *static_cast<UAnimSequence**>(Payload->Data);
+									const FAnimationSection NewSection{
+										.StartFrame = KeyFrame,
+										.Animation = Animation,
+									};
+									FAnimationTimelineTrack Candidate = *AnimationTrack;
+									Candidate.AnimSections.push_back(NewSection);
+
+									if (!IsAnimationCompatible(*AnimationTrack, Animation, Actor->GetLevel()))
+									{
+										ImGui::SetTooltip("Skeleton does not match the bound component");
+									}
+									else if (!IsAnimationLayoutValid(Candidate, Sequence.PlaybackFPS))
+									{
+										ImGui::SetTooltip("Overlaps another section");
+									}
+									else if (Payload->IsDelivery() && !ImGui::NeoIsDraggingSelection())
+									{
+										ImGui::NeoClearSelection();
+										AnimationTrack->AnimSections.push_back(NewSection);
+										SelectedTrack = RowIndex;
+										PreviewPlayer.Pause();
+									}
+								}
+
+								ImGui::EndDragDropTarget();
+							}
+
+							if (AnimationTrack && ImGui::BeginPopupContextItem("AnimationTrack"))
+							{
+								ImGui::TextDisabled("%s.%s", AnimationTrack->Binding.ActorName.c_str(), AnimationTrack->Binding.ComponentName.c_str());
+								ImGui::Separator();
+								if (ImGui::MenuItem("Remove Track"))
+								{
+									PendingRemoveTrack = RowIndex;
+								}
+								
+								ImGui::EndPopup();
+							}
+
 							if (FadeTrack && NewFadeKeyAlpha != PreviousFadeAlpha)
 							{
 								// 직접 입력한 값은 유지하고 Fade 트랙을 선택해 다음 Add Key의 대상으로 만든다.
@@ -485,6 +591,75 @@ void FSequencePanel::OnRender()
 									}
 									ImGui::PopID();
 								} });
+
+							if (AnimationTrack)
+							{
+								const int FPS = Sequence.PlaybackFPS;
+								const bool bWasValid = IsAnimationLayoutValid(*AnimationTrack, FPS);
+								std::vector<int32> PreviousStarts;
+								for (const auto& Section : AnimationTrack->AnimSections)
+								{
+									PreviousStarts.push_back(Section.StartFrame);
+								}
+
+								for (size_t Index = 0; Index < AnimationTrack->AnimSections.size(); ++Index)
+								{
+									FAnimationSection& Section = AnimationTrack->AnimSections[Index];
+									ImGui::PushID(&Section);
+
+									const int32 SectionEnd = FMath::Min(Section.GetEndFrame(FPS), EndFrame);
+									ImGui::NeoDrawTimelineRect(Section.StartFrame, SectionEnd, ImVec4(Row.Color.R, Row.Color.G, Row.Color.B, Row.Color.A));
+
+									ImGui::NeoKeyframe(&Section.StartFrame);
+									if (ImGui::IsNeoKeyframeRightClicked())
+									{
+										ImGui::OpenPopup("AnimationSection");
+									}
+									if (ImGui::IsNeoKeyframeHovered())
+									{
+										ImGui::BeginTooltip();
+										ImGui::Text("%s", Section.Animation ? Section.Animation->GetName().c_str() : "(None)");
+										ImGui::Text("Frames: %d - %d", Section.StartFrame, Section.GetEndFrame(FPS));
+										ImGui::EndTooltip();
+									}
+
+									Section.StartFrame = FMath::Clamp(Section.StartFrame, StartFrame, EndFrame);
+									if (ImGui::BeginPopup("AnimationSection"))
+									{
+										if (ImGui::MenuItem("Delete Section"))
+										{
+											PendingRemoveSectionRow = RowIndex;
+											PendingRemoveSection = Index;
+										}
+
+										ImGui::EndPopup();
+									}
+
+									ImGui::PopID();
+								}
+
+								if (bWasValid && !IsAnimationLayoutValid(*AnimationTrack, FPS))
+								{
+									for (size_t Index = 0; Index < PreviousStarts.size(); ++Index)
+									{
+										AnimationTrack->AnimSections[Index].StartFrame = PreviousStarts[Index];
+									}
+									if (ImGui::NeoIsDraggingSelection())
+									{
+										ImGui::SetTooltip("Animation sections cannot overlap");
+									}
+								}
+
+								for (size_t Index = 0; Index < PreviousStarts.size(); ++Index)
+								{
+									if (AnimationTrack->AnimSections[Index].StartFrame != PreviousStarts[Index])
+									{
+										PreviewPlayer.Pause();
+										break;
+									}
+								}
+							}
+
 							ImGui::EndNeoTimeLine();
 						}
 						if (FadeTrack && !IsFadeLayoutValid(*FadeTrack))
@@ -500,7 +675,25 @@ void FSequencePanel::OnRender()
 								ImGui::SetTooltip("Fade sections cannot overlap or have zero duration");
 							}
 						}
+
+						ImGui::PopID();
 					}
+
+					if (!ImGui::NeoIsDraggingSelection() && (PendingRemoveTrack >= 0 || PendingRemoveSectionRow >= 0))
+					{
+						ImGui::NeoClearSelection();
+						if (PendingRemoveSectionRow >= 0)
+						{
+							auto& Sections = std::get<FAnimationTimelineTrack>(Rows[PendingRemoveSectionRow].Rows).AnimSections;
+							Sections.erase(Sections.begin() + PendingRemoveSection);
+						}
+						else
+						{
+							Rows.erase(Rows.begin() + PendingRemoveTrack);
+						}
+						PreviewPlayer.Pause();
+					}
+
 					ImGui::EndNeoSequencer();
 				}
 				if (DisplayFrame != PreviousDisplayFrame)
@@ -510,6 +703,21 @@ void FSequencePanel::OnRender()
 				}
 			}
 			ImGui::EndChild();
+
+			if (ImGui::BeginDragDropTarget())
+			{
+				if (const ImGuiPayload* Payload = ImGui::AcceptDragDropPayload(EditorDragDrop::Actor))
+				{
+					const int NewTrack = AddAnimationTrack(*Actor, *static_cast<AActor**>(Payload->Data));
+					if (NewTrack >= 0)
+					{
+						SelectedTrack = NewTrack;
+						PreviewPlayer.Pause();
+					}
+				}
+
+				ImGui::EndDragDropTarget();
+			}
 		}
 
 		ImGui::SetCursorPosY(FooterY);
@@ -527,6 +735,30 @@ void FSequencePanel::OnRender()
 		}
 	}
 	ImGui::End();
+	Actor->ApplyAnimationTracks(false);
 
 	SetOpen(bOpen);
+}
+
+void FSequencePanel::SetPreviewActor(ASequenceActor* Actor)
+{
+	const uint32 NewUUID = Actor ? Actor->GetUUID() : 0;
+	if (PreviewActorUUID == NewUUID)
+	{
+		return;
+	}
+
+	for (UObject* Object : GUObjectArray)
+	{
+		if (Object && Object->GetUUID() == PreviewActorUUID)
+		{
+			auto* Previous = Cast<ASequenceActor>(Object);
+			if (Previous && !Previous->IsActorBeingDestroyed())
+			{
+				Previous->RestoreAnimatedComponents();
+			}
+			break;
+		}
+	}
+	PreviewActorUUID = NewUUID;
 }

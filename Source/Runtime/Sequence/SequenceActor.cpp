@@ -1,10 +1,97 @@
 #include "EnginePCH.h"
 #include "SequenceActor.h"
+
+#include "SequenceBinding.h"
+#include "Animation/AnimSequence.h"
+#include "Animation/AnimSingleNodeInstance.h"
 #include "Components/SceneComponent.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Camera/CameraComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Engine/World.h"
 #include "Engine/Level.h"
+
+namespace
+{
+template<typename Func>
+void ForEachSequenceInLevel(const ULevel* Level, Func&& Action)
+{
+	if (!Level)
+	{
+		return;
+	}
+	for (AActor* Actor : Level->GetActors())
+	{
+		if (auto* Sequence = Cast<ASequenceActor>(Actor))
+		{
+			Action(*Sequence);
+		}
+	}
+}
+
+void ApplyAnimationSample(USkeletalMeshComponent& Component, const FAnimationSample& Sample, bool bFireNotifies)
+{
+	USkeletalMesh* Mesh = Component.GetSkeletalMesh();
+	if (!Mesh || Sample.Animation->GetSkeleton() != Mesh->Skeleton)
+	{
+		return;
+	}
+
+	if (Component.GetAnimationMode() != EAnimationMode::AnimationSingleNode)
+	{
+		// TODO
+		Component.SetAnimationMode(EAnimationMode::AnimationSingleNode);
+	}
+
+	UAnimSingleNodeInstance* Instance = Component.GetSingleNodeInstance();
+	if (!Instance)
+	{
+		return;
+	}
+
+	if (Instance->GetCurrentAsset() != Sample.Animation)
+	{
+		Component.SetAnimation(Sample.Animation);
+	}
+
+	Instance->SetPlaying(false);
+	Component.SetPosition(Sample.Time, bFireNotifies);
+	Component.RefreshBoneTransforms();
+}
+
+USkeletalMeshComponent* FindAnimatedComponent(const ULevel* Level, uint32 UUID)
+{
+	if (!Level || UUID)
+	{
+		return nullptr;
+	}
+
+	for (AActor* Actor : Level->GetActors())
+	{
+		if (!Actor || Actor->IsActorBeingDestroyed())
+		{
+			continue;
+		}
+
+		for (UActorComponent* Component : Actor->GetComponents())
+		{
+			if (Component && Component->GetUUID() == UUID)
+			{
+				auto* SkeletalMesh = Cast<USkeletalMeshComponent>(Component);
+				return SkeletalMesh && !SkeletalMesh->IsBeingDestroyed() ? SkeletalMesh : nullptr;
+			}
+		}
+	}
+
+	return nullptr;
+}
+
+bool CanApplySample(const USkeletalMeshComponent& Component, const FAnimationSample& Sample)
+{
+	const USkeletalMesh* Mesh = Component.GetSkeletalMesh();
+	return Mesh && Component.IsRegistered() && Sample.Animation->GetSkeleton() == Mesh->Skeleton;
+}
+}
 
 ASequenceActor::ASequenceActor()
 {
@@ -38,6 +125,109 @@ float ASequenceActor::GetWorldFadeAlpha(UWorld* World)
 	return FadeAlpha;
 }
 
+void ASequenceActor::NotifyActorRenamed(const AActor* Renamed, const FString& OldName)
+{
+	if (!Renamed)
+	{
+		return;
+	}
+	const FString NewName = Renamed->GetName();
+	ForEachSequenceInLevel(Renamed->GetLevel(), [&](ASequenceActor& Sequence)
+	{
+		Sequence.SequencePlayer.GetSequenceData().ForEachBinding([&](FSequenceBinding& Binding)
+		{
+			if (Binding.ActorName == OldName)
+			{
+				Binding.ActorName = NewName;
+			}
+		});
+	});
+}
+
+void ASequenceActor::NotifyComponentRenamed(const UActorComponent* Renamed, const FString& OldName)
+{
+	const AActor* Owner = Renamed ? Renamed->GetOwner() : nullptr;
+	if (!Owner)
+	{
+		return;
+	}
+	const FString OwnerName = Owner->GetName();
+	const FString NewName = Renamed->GetName();
+	ForEachSequenceInLevel(Owner->GetLevel(), [&](ASequenceActor& Sequence)
+	{ 
+		Sequence.SequencePlayer.GetSequenceData().ForEachBinding([&](FSequenceBinding& Binding)
+		{
+			if (Binding.ActorName == OwnerName && Binding.ComponentName == OldName)
+			{
+				Binding.ComponentName = NewName;
+			}
+		}); 
+	});
+}
+
+void ASequenceActor::ApplyAnimationTracks(bool bFireNotifies)
+{
+	UWorld* World = GetWorld();
+	if (!World || World->GetWorldType() == EWorldType::EditorPreview)
+	{
+		return;
+	}
+
+	if (World->GetWorldType() == EWorldType::Editor)
+	{
+		bFireNotifies = false;
+	}
+
+	TArray<uint32> AppliedUUIDs;
+	for (const auto& Row : SequencePlayer.GetSequenceData().Rows)
+	{
+		const auto* Track = std::get_if<FAnimationTimelineTrack>(&Row.Rows);
+		FAnimationSample Sample;
+		if (!Track || !SequencePlayer.EvaluateAnimationTrack(*Track, Sample))
+		{
+			continue;
+		}
+
+		USkeletalMeshComponent* Component = SequenceBinding::ResolveComponent(Track->Binding, GetLevel());
+		if (!Component || !CanApplySample(*Component, Sample))
+		{
+			continue;
+		}
+
+		CaptureAnimatedComponent(*Component);
+		ApplyAnimationSample(*Component, Sample, bFireNotifies);
+		AppliedUUIDs.Add(Component->GetUUID());
+	}
+
+	for (int32 Index = AnimatedComponents.Num() - 1; Index >= 0; --Index)
+	{
+		if (AppliedUUIDs.Find(AnimatedComponents[Index].ComponentUUID) == -1)
+		{
+			RestoreAnimatedComponentAt(Index);
+		}
+	}
+}
+
+void ASequenceActor::RestoreAnimatedComponents()
+{
+	// 기록 순서의 역순
+	for (int32 Index = AnimatedComponents.Num() - 1; Index >= 0; --Index)
+	{
+		RestoreAnimatedComponentAt(Index);
+	}
+}
+
+void ASequenceActor::RestoreAllAnimatedComponents(const UWorld* World)
+{
+	if (World)
+	{
+		ForEachSequenceInLevel(World->GetPersistentLevel(), [](ASequenceActor& Sequence)
+		{
+			Sequence.RestoreAnimatedComponents();
+		});
+	}
+}
+
 void ASequenceActor::BeginPlay() // bAutoPlay true 시 시작할때 Sequence가 시작됨
 {
 	Super::BeginPlay();
@@ -55,6 +245,7 @@ void ASequenceActor::Tick(float DeltaTime)
 	if (SequencePlayer.IsStopped() || (SequencePlayer.HasFinished() && !bWasPlaying))
 	{
 		ReleaseCameraView();
+		RestoreAnimatedComponents();
 		return;
 	}
 
@@ -64,18 +255,25 @@ void ASequenceActor::Tick(float DeltaTime)
 		ApplyCameraView();
 	}
 	// 끝 프레임의 값을 적용한 뒤 다음 Tick에서 제어만 해제한다. 카메라 배치는 유지한다.
+
+	if (bWasPlaying)
+	{
+		ApplyAnimationTracks(true);
+	}
 }
 
 void ASequenceActor::Play()
 {
 	SequencePlayer.Play();
 	ApplyCameraView();
+	ApplyAnimationTracks(false);
 }
 
 void ASequenceActor::Stop()
 {
 	SequencePlayer.Stop();
 	ReleaseCameraView();
+	RestoreAnimatedComponents();
 }
 
 void ASequenceActor::ApplyCameraView()
@@ -150,6 +348,85 @@ void ASequenceActor::ReleaseCameraView()
 	}
 	ControlledCameraUUID = 0;
 	bCameraPlaybackActive = false;
+}
+
+void ASequenceActor::CaptureAnimatedComponent(USkeletalMeshComponent& Component)
+{
+	const uint32 UUID = Component.GetUUID();
+	for (const auto& State : AnimatedComponents)
+	{
+		if (State.ComponentUUID == UUID)
+		{
+			return;
+		}
+	}
+
+	ForEachSequenceInLevel(GetLevel(), [&](ASequenceActor& Other)
+	{
+		if (&Other != this)
+		{
+			Other.RestoreAnimatedComponent(UUID);
+		} 
+	});
+
+	FAnimatedComponentState State;
+	State.ComponentUUID = UUID;
+	State.bWasSingleNode = Component.GetAnimationMode() == EAnimationMode::AnimationSingleNode;
+	if (const UAnimSingleNodeInstance* Instance = Component.GetSingleNodeInstance())
+	{
+		State.Asset = Instance->GetCurrentAsset();
+		State.Position = Instance->GetCurrentTime();
+		State.PlayRate = Instance->GetPlayRate();
+		State.bPlaying = Instance->IsPlaying();
+		State.bLooping = Instance->IsLooping();
+	}
+	AnimatedComponents.Add(State);
+}
+
+void ASequenceActor::RestoreAnimatedComponentAt(int32 Index)
+{
+	const FAnimatedComponentState State = AnimatedComponents[Index];
+	AnimatedComponents.RemoveAt(Index, 1);
+
+	USkeletalMeshComponent* Component = FindAnimatedComponent(GetLevel(), State.ComponentUUID);
+	if (!Component)
+	{
+		return;
+	}
+
+	if (!State.bWasSingleNode)
+	{
+		Component->SetAnimationMode(EAnimationMode::AnimationClass);
+	}
+	else if (UAnimSingleNodeInstance* Instance = Component->GetSingleNodeInstance())
+	{
+		Instance->SetAnimationAsset(State.Asset, State.bLooping, State.PlayRate);
+		Instance->SetPosition(State.Position, false);
+		Instance->SetPlaying(State.bPlaying);
+	}
+
+	if (Component->GetAnimInstance())
+	{
+		Component->RefreshBoneTransforms();
+	}
+	else
+	{
+		Component->ResetToRefPose();
+	}
+}
+
+bool ASequenceActor::RestoreAnimatedComponent(uint32 ComponentUUID)
+{
+	for (int32 Index = 0; Index < AnimatedComponents.Num(); ++Index)
+	{
+		if (AnimatedComponents[Index].ComponentUUID == ComponentUUID)
+		{
+			RestoreAnimatedComponentAt(Index);
+			return true;
+		}
+	}
+
+	return false;
 }
 
 void ASequenceActor::EndPlay()

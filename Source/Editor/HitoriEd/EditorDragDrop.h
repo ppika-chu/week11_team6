@@ -14,6 +14,9 @@ inline constexpr const char* Font = "ASSET_FONT";
 // 페이로드 내용: 널로 끝나는 UTF-8 파일 경로
 inline constexpr const char* ScriptFile = "ASSET_SCRIPT_FILE";
 
+// 페이로드 내용: UAnimSequence* 한 개
+inline constexpr const char* AnimSequence = "ASSET_ANIM_SEQUENCE";
+
 inline constexpr const char* Component = "COMPONENT";
 
 inline constexpr const char* Actor = "ACTOR";
