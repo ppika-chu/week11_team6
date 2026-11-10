@@ -79,6 +79,8 @@ protected:
 	virtual void HandleViewportInput();
 	// 뷰포트 왼쪽 위 통계 아래에 붙일 줄. 언리얼 FAnimationViewportClient::GetDisplayInfo
 	virtual FString GetDisplayInfo() const { return FString(); }
+	// 뷰포트 보기 콤보(Lit / Skin Weights) 안에 파생 에디터가 하위 메뉴를 더 붙인다. 기본은 없음
+	virtual void DrawViewModeMenuExtras() {}
 	// 본 계층을 트리로 그리고, 클릭하면 SelectedBoneIndex 갱신. 언리얼도 두 에디터가 스켈레톤 트리를 같이 쓴다
 	void DrawSkeletonTree();
 	// 본 하나와 그 자식들을 재귀로 그린다

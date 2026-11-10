@@ -31,12 +31,15 @@
 
 namespace
 {
-	// 저장된 배치가 없을 때의 기본 배치: 왼쪽 트리 | 가운데 뷰포트 위, 타임라인 아래
-	void BuildDefaultPanelLayout(ImGuiID DockId, const ImVec2& Size, const char* TreePanel, const char* ViewportPanel, const char* TimelinePanel, const char* NotifyPanel)
+	// 저장된 배치가 없을 때의 기본 배치: 왼쪽 트리 | 가운데 뷰포트 위, 타임라인 아래 | 오른쪽 Notifies 위, 디테일 아래
+	void BuildDefaultPanelLayout(ImGuiID DockId, const ImVec2& Size, const char* TreePanel, const char* ViewportPanel, const char* TimelinePanel,
+		const char* NotifyPanel, const char* DetailsPanel)
 	{
 		const float TreeWidth = EditorUIScale::Px(250.0f);
+		const float DetailsWidth = EditorUIScale::Px(280.0f);
 		const float TimelineHeight = EditorUIScale::Px(180.0f);
 		const float TreeRatio = std::clamp(TreeWidth / Size.x, 0.1f, 0.4f);
+		const float DetailsRatio = std::clamp(DetailsWidth / std::max(Size.x - TreeWidth, 1.0f), 0.1f, 0.4f);
 		const float TimelineRatio = std::clamp(TimelineHeight / Size.y, 0.15f, 0.5f);
 
 		ImGui::DockBuilderAddNode(DockId, ImGuiDockNodeFlags_DockSpace);
@@ -44,14 +47,30 @@ namespace
 
 		ImGuiID CenterId = DockId;
 		const ImGuiID TreeId = ImGui::DockBuilderSplitNode(CenterId, ImGuiDir_Left, TreeRatio, nullptr, &CenterId);
-		const ImGuiID NotifyId = ImGui::DockBuilderSplitNode(CenterId, ImGuiDir_Right, 0.3f, nullptr, &CenterId);
+		ImGuiID NotifyId = ImGui::DockBuilderSplitNode(CenterId, ImGuiDir_Right, DetailsRatio, nullptr, &CenterId);
+		const ImGuiID DetailsId = ImGui::DockBuilderSplitNode(NotifyId, ImGuiDir_Down, 0.4f, nullptr, &NotifyId);
 		const ImGuiID TimelineId = ImGui::DockBuilderSplitNode(CenterId, ImGuiDir_Down, TimelineRatio, nullptr, &CenterId);
 
 		ImGui::DockBuilderDockWindow(TreePanel, TreeId);
 		ImGui::DockBuilderDockWindow(NotifyPanel, NotifyId);
 		ImGui::DockBuilderDockWindow(ViewportPanel, CenterId);
 		ImGui::DockBuilderDockWindow(TimelinePanel, TimelineId);
+		ImGui::DockBuilderDockWindow(DetailsPanel, DetailsId);
 		ImGui::DockBuilderFinish(DockId);
+	}
+
+	// 언리얼 Process Root Motion 메뉴 글자
+	const char* GetProcessRootMotionModeLabel(EProcessRootMotionMode Mode)
+	{
+		switch (Mode)
+		{
+		case EProcessRootMotionMode::Loop:
+			return "Loop";
+		case EProcessRootMotionMode::LoopAndReset:
+			return "Loop and Reset";
+		default:
+			return "Ignore";
+		}
 	}
 
 	// 불러오지 못한 아이콘은 글자 버튼으로 대신한다
@@ -105,6 +124,7 @@ FAnimationEditor::FAnimationEditor(UAnimSequence* InSequence, USkeletalMesh* InP
 	, TreePanelTitle(std::format("Skeleton Tree###AnimSkeletonTree_{}", InSequence->GetPath()))
 	, ViewportPanelTitle(std::format("Viewport###AnimViewport_{}", InSequence->GetPath()))
 	, TimelinePanelTitle(std::format("Timeline###AnimTimeline_{}", InSequence->GetPath()))
+	, DetailsPanelTitle(std::format("Asset Details###AnimAssetDetails_{}", InSequence->GetPath()))
 	, NotifyPanelTitle(std::format("Notifies###AnimNotifies_{}", InSequence->GetPath()))
 {
 	// 시각 진행과 포즈 계산은 프리뷰 월드의 TickComponent가 한다
@@ -165,18 +185,19 @@ void FAnimationEditor::OnRender()
 	// 스켈레탈 에디터처럼 루트 창이라 Level Editor나 다른 뷰어와 붙을 수 있고, 레벨 패널과는 섞이지 않는다
 	ImGui::SetNextWindowClass(&FEditorUI::GetRootWindowClass());
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+	// 저장하지 않은 변경이 있으면 탭 제목에 표시 (언리얼 탭의 * 표시)
 	const bool bHostVisible = ImGui::Begin(WindowTitle.c_str(), &bIsOpen,
-		ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse | (bNotifyDirty ? ImGuiWindowFlags_UnsavedDocument : 0));
+		ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse | (bAssetDirty ? ImGuiWindowFlags_UnsavedDocument : 0));
 	ImGui::PopStyleVar();
-	if (!bIsOpen && bNotifyDirty)
+	if (!bIsOpen && bAssetDirty)
 	{
 		bIsOpen = true;
-		ImGui::OpenPopup("Unsaved Notifies");
+		ImGui::OpenPopup("Unsaved Changes");
 	}
-	if (ImGui::BeginPopupModal("Unsaved Notifies", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+	if (ImGui::BeginPopupModal("Unsaved Changes", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
 	{
-		ImGui::TextUnformatted("Save notify changes before closing?");
-		if (ImGui::Button("Save and Close") && SaveNotifies())
+		ImGui::TextUnformatted("Save animation changes before closing?");
+		if (ImGui::Button("Save and Close") && SaveAsset())
 		{
 			bIsOpen = false;
 			ImGui::CloseCurrentPopup();
@@ -185,7 +206,7 @@ void FAnimationEditor::OnRender()
 		const UEditorEngine* Editor = Cast<UEditorEngine>(GEngine);
 		const bool bPlayingPIE = Editor && Editor->IsPlaying();
 		ImGui::BeginDisabled(bPlayingPIE);
-		if (ImGui::Button("Discard and Close") && DiscardNotifyChanges())
+		if (ImGui::Button("Discard and Close") && DiscardAssetChanges())
 		{
 			bIsOpen = false;
 			ImGui::CloseCurrentPopup();
@@ -193,7 +214,7 @@ void FAnimationEditor::OnRender()
 		ImGui::EndDisabled();
 		if (bPlayingPIE && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
 		{
-			ImGui::SetTooltip("Stop PIE to discard notify changes.");
+			ImGui::SetTooltip("Stop PIE to discard animation changes.");
 		}
 		ImGui::SameLine();
 		if (ImGui::Button("Keep Editing"))
@@ -215,7 +236,13 @@ void FAnimationEditor::OnRender()
 	PanelClass.DockingAllowUnclassed = false;
 	if (!ImGui::DockBuilderGetNode(PanelDockId))
 	{
-		BuildDefaultPanelLayout(PanelDockId, ImGui::GetWindowSize(), TreePanelTitle.c_str(), ViewportPanelTitle.c_str(), TimelinePanelTitle.c_str(), NotifyPanelTitle.c_str());
+		BuildDefaultPanelLayout(PanelDockId, ImGui::GetWindowSize(), TreePanelTitle.c_str(), ViewportPanelTitle.c_str(), TimelinePanelTitle.c_str(),
+			NotifyPanelTitle.c_str(), DetailsPanelTitle.c_str());
+	}
+	// 패널들 위 한 줄. 언리얼 에셋 에디터 툴바의 Save 자리
+	if (bHostVisible)
+	{
+		DrawToolbar();
 	}
 	// 탭이 가려져 Begin이 false여도 호출해야 패널의 도킹이 풀리지 않는다
 	ImGui::DockSpace(PanelDockId, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_None, &PanelClass);
@@ -256,12 +283,115 @@ void FAnimationEditor::OnRender()
 	}
 	ImGui::End();
 
+	if (BeginPanel(DetailsPanelTitle, ImGuiWindowFlags_None))
+	{
+		DrawAssetDetails();
+	}
+	ImGui::End();
+
 	bIsFocused = bAnyPanelFocused;
 
 	// 언리얼 Persona처럼 스페이스로 재생 / 일시정지. 패널 중 하나가 포커스일 때만, 글자 입력 중에는 받지 않는다
 	if (bIsFocused && !ImGui::GetIO().WantTextInput && ImGui::IsKeyPressed(ImGuiKey_Space, false))
 	{
 		OnClick_Forward();
+	}
+	// 언리얼처럼 Ctrl+S로 이 에셋 저장
+	if (bIsFocused && bAssetDirty && ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_S, false))
+	{
+		SaveAsset();
+	}
+}
+
+void FAnimationEditor::DrawViewModeMenuExtras()
+{
+	UDebugSkelMeshComponent* PreviewComponent = PreviewScene->GetPreviewComponent();
+	if (ImGui::BeginMenu("Root Motion"))
+	{
+		// 에셋이 Root Motion을 안 쓰면 Loop 계열은 고를 수 없다 (UE CanUseProcessRootMotionMode)
+		for (const EProcessRootMotionMode Mode : { EProcessRootMotionMode::Ignore, EProcessRootMotionMode::Loop, EProcessRootMotionMode::LoopAndReset })
+		{
+			if (ImGui::MenuItem(GetProcessRootMotionModeLabel(Mode), nullptr, PreviewComponent->GetProcessRootMotionMode() == Mode,
+				PreviewComponent->CanUseProcessRootMotionMode(Mode)))
+			{
+				PreviewComponent->SetProcessRootMotionMode(Mode);
+			}
+		}
+		if (!PreviewComponent->DoesCurrentAssetHaveRootMotion())
+		{
+			ImGui::TextDisabled("Turn on Enable Root Motion in Asset Details");
+		}
+		ImGui::EndMenu();
+	}
+}
+
+void FAnimationEditor::DrawToolbar()
+{
+	// 창 여백이 0이라 툴바만 안쪽으로 띄운다
+	const ImVec2 Padding = ImGui::GetStyle().FramePadding;
+	ImGui::SetCursorPos(ImVec2(ImGui::GetCursorPosX() + Padding.x, ImGui::GetCursorPosY() + Padding.y));
+
+	// Notify와 Root Motion 설정은 바꾸면 메모리의 에셋에는 바로 적용되고, 파일에는 Save(또는 Ctrl+S)를 눌러야 쓴다
+	ImGui::BeginDisabled(!bAssetDirty);
+	if (ImGui::Button("Save"))
+	{
+		SaveAsset();
+	}
+	ImGui::EndDisabled();
+	if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+	{
+		ImGui::SetTooltip(bAssetDirty ? "Save changes to the animation file (Ctrl+S)." : "No unsaved changes.");
+	}
+	if (bAssetDirty)
+	{
+		ImGui::SameLine();
+		ImGui::TextDisabled("Unsaved changes");
+	}
+	if (!SaveMessage.empty())
+	{
+		ImGui::SameLine();
+		ImGui::TextUnformatted(SaveMessage.c_str());
+	}
+	ImGui::SetCursorPosY(ImGui::GetCursorPosY() + Padding.y);
+}
+
+void FAnimationEditor::DrawAssetDetails()
+{
+	// 언리얼 에셋 디테일 > Root Motion
+	if (ImGui::CollapsingHeader("Root Motion", ImGuiTreeNodeFlags_DefaultOpen))
+	{
+		bool bChanged = false;
+		bChanged |= ImGui::Checkbox("Enable Root Motion", &Sequence->bEnableRootMotion);
+		if (ImGui::IsItemHovered())
+		{
+			ImGui::SetTooltip("Extract the root bone motion and move the actor by it.");
+		}
+
+		constexpr const char* RootLockLabels[] = { "Ref Pose", "Anim First Frame", "Zero" };
+		int RootLock = static_cast<int>(Sequence->RootMotionRootLock);
+		ImGui::TextUnformatted("Root Motion Root Lock");
+		ImGui::SetNextItemWidth(-FLT_MIN);
+		if (ImGui::Combo("##RootMotionRootLock", &RootLock, RootLockLabels, IM_ARRAYSIZE(RootLockLabels)))
+		{
+			Sequence->RootMotionRootLock = static_cast<ERootMotionRootLock::Type>(RootLock);
+			bChanged = true;
+		}
+		if (ImGui::IsItemHovered())
+		{
+			ImGui::SetTooltip("Root Motion Root Lock: where the root bone is held after its motion is extracted.");
+		}
+
+		bChanged |= ImGui::Checkbox("Force Root Lock", &Sequence->bForceRootLock);
+		if (ImGui::IsItemHovered())
+		{
+			ImGui::SetTooltip("Hold the root bone even when Root Motion is off. The motion is discarded.");
+		}
+
+		if (bChanged)
+		{
+			bAssetDirty = true;
+			SaveMessage.clear();
+		}
 	}
 }
 
@@ -388,26 +518,27 @@ void FAnimationEditor::PrepareNotifyEdit()
 		Instance->SetPlaying(false);
 		Instance->EndNotifyStates();
 	}
-	bNotifyDirty = true;
+	bAssetDirty = true;
 	SaveMessage.clear();
 }
 
-bool FAnimationEditor::SaveNotifies()
+bool FAnimationEditor::SaveAsset()
 {
+	// 편집 데이터 JSON에 Notify와 리플렉션 프로퍼티(Root Motion 설정)가 함께 들어간다
 	FString Error;
 	if (!FFbxAssetLoader::SaveAnimationAsset(Sequence, Error))
 	{
 		SaveMessage = "Save failed: " + Error;
 		return false;
 	}
-	bNotifyDirty = false;
+	bAssetDirty = false;
 	SaveMessage = "Saved";
 	return true;
 }
 
-bool FAnimationEditor::DiscardNotifyChanges()
+bool FAnimationEditor::DiscardAssetChanges()
 {
-	// AssetManager가 같은 Sequence를 보관하므로 창만 닫지 않고 디스크의 Notify를 복원한다.
+	// AssetManager가 같은 Sequence를 보관하므로 창만 닫지 않고 디스크의 Notify와 Root Motion 설정을 복원한다.
 	FString Path, Error;
 	FFbxAssetData Data;
 	if (!FbxPath::ResolveKey(Sequence->GetPath(), Path, Error) || !FFbxAssetBake::ReadBaked(Path, Data, Error))
@@ -424,6 +555,10 @@ bool FAnimationEditor::DiscardNotifyChanges()
 	{
 		json NotifyData = json::parse(Data.Animation.NotifyData);
 		PrepareNotifyEdit();
+		// 예전 파일에는 Root Motion 항목이 없다. 불러오기는 없는 항목을 건너뛰므로 먼저 기본값으로 둔다
+		Sequence->bEnableRootMotion = false;
+		Sequence->RootMotionRootLock = ERootMotionRootLock::RefPose;
+		Sequence->bForceRootLock = false;
 		Sequence->Serialize(NotifyData, true);
 	}
 	catch (const std::exception& Exception)
@@ -433,7 +568,7 @@ bool FAnimationEditor::DiscardNotifyChanges()
 	}
 	SelectedNotifyIndex = -1;
 	DraggedNotifyIndex = -1;
-	bNotifyDirty = false;
+	bAssetDirty = false;
 	SaveMessage.clear();
 	return true;
 }
@@ -544,17 +679,7 @@ void FAnimationEditor::DrawNotifyEditor()
 		DrawClasses("Notify State", UAnimNotifyState::StaticClass());
 		ImGui::EndPopup();
 	}
-	ImGui::SameLine();
-	if (ImGui::Button("Save"))
-	{
-		SaveNotifies();
-	}
-	ImGui::SameLine();
-	ImGui::TextUnformatted(bNotifyDirty ? "Unsaved changes" : "");
-	if (!SaveMessage.empty())
-	{
-		ImGui::TextWrapped("%s", SaveMessage.c_str());
-	}
+	// 저장과 저장 상태 표시는 창 위 툴바 하나에서 한다 (Notify, Root Motion 설정을 함께 저장)
 
 	ImGui::Separator();
 	if (ImGui::BeginChild("NotifyList", ImVec2(0.0f, EditorUIScale::Px(140.0f)), ImGuiChildFlags_Borders))

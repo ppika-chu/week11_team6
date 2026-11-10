@@ -193,8 +193,26 @@ public:
 	void Publish()
 	{
 		if (!bPrepared) PreparePublish();
+		// 공유 스켈레톤을 새 객체로 바꾸면 다른 FBX의 메시와 애니메이션은 옛 객체를 계속 가리킨다.
+		// 스켈레톤이 같은지 포인터로 비교하므로 새 객체로 옮겨야 서로 재생된다. 합칠 때 본은 끝에만 붙어 기존 트랙 번호는 그대로다
+		std::vector<std::pair<USkeleton*, USkeleton*>> SkeletonSwaps;
+		for (const auto& [Key, Object] : Objects)
+		{
+			USkeleton* NewSkeleton = Cast<USkeleton>(Object);
+			USkeleton* OldSkeleton = NewSkeleton ? UAssetManager::GetAssetByPath<USkeleton>(Key) : nullptr;
+			if (OldSkeleton && OldSkeleton != NewSkeleton) SkeletonSwaps.emplace_back(OldSkeleton, NewSkeleton);
+		}
 		UAssetManager::Get().CommitAssetRegistration(PreparedRegistry);
 		bPublished = true;
+		if (SkeletonSwaps.empty()) return;
+		UAssetManager::ForEachAsset([&SkeletonSwaps](URenderAsset& Asset)
+			{
+				for (const auto& [OldSkeleton, NewSkeleton] : SkeletonSwaps)
+				{
+					if (auto* Mesh = Cast<USkeletalMesh>(&Asset); Mesh && Mesh->Skeleton == OldSkeleton) Mesh->Skeleton = NewSkeleton;
+					if (auto* Animation = Cast<UAnimationAsset>(&Asset); Animation && Animation->GetSkeleton() == OldSkeleton) Animation->SetSkeleton(NewSkeleton);
+				}
+			});
 	}
 };
 

@@ -4,6 +4,8 @@
 #include "BlendSpace.h"
 #include "AnimSequence.h"
 #include "AnimationRuntime.h"
+#include "Skeleton.h"
+#include "Render/SkeletalMesh.h"
 #include "AnimNotifies/AnimNotify.h"
 #include "AnimNotifies/AnimNotifyState.h"
 #include <utility>
@@ -37,6 +39,8 @@ void UAnimInstance::UpdateAnimation(float DeltaSeconds)
 	}
 
 	ClearQueuedAnimEvents();
+	// 지난 프레임에 아무도 꺼내 가지 않은 변화량은 버린다 (에디터처럼 적용하는 쪽이 없을 때 쌓이지 않게)
+	ExtractedRootMotion.Clear();
 	DeltaTime = DeltaSeconds;
 	NativeUpdateAnimation(DeltaSeconds);
 	bNeedsQueuedAnimEventsDispatched = true;
@@ -56,7 +60,25 @@ void UAnimInstance::EvaluateAnimation(FAnimPose& OutPose)
 		return;
 	}
 
-	OutPose.LocalTransforms = Mesh->RefSkeleton.RefBonePose;
+	// 그래프는 스켈레톤 본 순서로 돈다. 공유 스켈레톤은 메시와 본 수, 순서가 다를 수 있다 (UE FBoneContainer)
+	// 시작 포즈는 메시에 있는 본은 메시 기준 자세, 없는 본은 스켈레톤 기준 자세다. 컴포넌트가 메시 순서로 바꾼다
+	if (USkeleton* Skeleton = Mesh->Skeleton)
+	{
+		const FSkeletonToMeshLinkup& Linkup = Skeleton->FindOrAddMeshLinkupData(Mesh);
+		OutPose.LocalTransforms = Skeleton->RefSkeleton.RefBonePose;
+		for (int32 SkeletonIndex = 0; SkeletonIndex < OutPose.LocalTransforms.Num(); ++SkeletonIndex)
+		{
+			const int32 MeshIndex = Linkup.SkeletonToMeshTable[SkeletonIndex];
+			if (MeshIndex != INDEX_NONE)
+			{
+				OutPose.LocalTransforms[SkeletonIndex] = Mesh->RefSkeleton.RefBonePose[MeshIndex];
+			}
+		}
+	}
+	else
+	{
+		OutPose.LocalTransforms = Mesh->RefSkeleton.RefBonePose;
+	}
 	if (IsInitialized() && RootNode)
 	{
 		RootNode->Evaluate(OutPose);
@@ -111,9 +133,21 @@ void UAnimInstance::SequenceAdvanceImmediate(UAnimSequenceBase* Sequence, bool b
 	const float PreviousTime = CurrentTime;
 	const float MoveDelta = DeltaSeconds * PlayRate * Sequence->RateScale;
 	FAnimationRuntime::AdvanceTime(bLooping, MoveDelta, CurrentTime, Sequence->GetPlayLength());
+	// UE UAnimSequenceBase::HandleAssetPlayerTickedInternal: 진행한 구간의 루트 변화량을 모은다
+	if (RootMotionMode == ERootMotionMode::RootMotionFromEverything && Sequence->HasRootMotion() && MoveDelta != 0.0f)
+	{
+		ExtractedRootMotion.Accumulate(Sequence->ExtractRootMotion(PreviousTime, MoveDelta, bLooping));
+	}
 	FAnimNotifyContext Context(bLooping);
 	Sequence->GetAnimNotifies(PreviousTime, MoveDelta, Context);
 	NotifyQueue.AddAnimNotifies(Context.ActiveNotifies, EffectiveBlendWeight);
+}
+
+FRootMotionMovementParams UAnimInstance::ConsumeExtractedRootMotion()
+{
+	FRootMotionMovementParams RootMotion = ExtractedRootMotion;
+	ExtractedRootMotion.Clear();
+	return RootMotion;
 }
 
 void UAnimInstance::ClearQueuedAnimEvents()

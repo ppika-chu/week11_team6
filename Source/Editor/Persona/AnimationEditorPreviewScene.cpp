@@ -51,6 +51,13 @@ void FAnimationEditorPreviewScene::Tick(float DeltaTime)
 {
 	PreviewWorld->Tick(DeltaTime);
 
+	// 월드 Tick에서 모은 Root Motion으로 프리뷰 메시를 옮긴다. 바닥 밖은 반대편으로 넘긴다 (UE FAnimationEditorPreviewScene::Tick)
+	if (PreviewComponent)
+	{
+		const float HalfFloor = FloorSize * 0.5f;
+		PreviewComponent->ConsumeRootMotion(FVector(-HalfFloor, -HalfFloor, 0.0f), FVector(HalfFloor, HalfFloor, 0.0f));
+	}
+
 	// 렌더(RenderMultipleViewports)가 Tick 뒤에 오므로 여기서 타깃과 카메라를 맞춰 둔다
 	UpdateRenderTargets();
 	UpdatePreviewCamera();
