@@ -38,7 +38,7 @@ VS_OUTPUT mainVS(FVertexFactoryInput Input)
 
 float3 SampleRamp(float T)
 {
-    float3 Color = RampStops[0].rgb;
+    float3 Color = RampStops[StopCount - 1].rgb;
     for (int i = 1; i < StopCount; ++i)
     {
         const float4 A = RampStops[i - 1];

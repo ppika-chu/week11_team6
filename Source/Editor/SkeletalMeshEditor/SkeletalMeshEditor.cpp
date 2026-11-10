@@ -184,6 +184,7 @@ FSkeletalMeshEditor::FSkeletalMeshEditor(USkeletalMesh* InMesh, int32 InEditorId
 	, ViewportPanelTitle(std::format("Viewport###SkeletalMeshViewport_{}", InMesh->GetPath()))
 	, DetailsPanelTitle(std::format("Details###SkeletalMeshDetails_{}", InMesh->GetPath()))
 {
+	PreviewScene->GetPreviewComponent()->SetAnimationMode(EAnimationMode::AnimationClass);
 	// 본 아이콘은 부모(FPersonaAssetEditor)가 불러온다. Resources는 스캔하지 않으므로 경로로 불러온다
 	ResetIcon = UAssetManager::Get().LoadTexture(EditorResourcePaths::ResetToDefaultIcon);
 	GizmoWorldIcon = UAssetManager::Get().LoadTexture(EditorResourcePaths::GizmoWorldIcon);
