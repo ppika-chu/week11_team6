@@ -7,6 +7,7 @@
 #include "Animation/AnimState.h"
 #include "Animation/AnimTransition.h"
 #include "Animation/AnimSequence.h"
+#include "Animation/BlendSpace1D.h"
 #include "Animation/AnimationRuntime.h"
 #include "Animation/AnimNodes/AnimNode_SequencePlayer.h"
 #include "Animation/AnimNodes/AnimNode_BlendSpacePlayer.h"
@@ -35,6 +36,8 @@ struct FLuaAnimationGraphObject
 {
 	std::shared_ptr<void> Value;
 	std::unordered_map<FString, std::shared_ptr<FLuaAnimationGraphObject>> Inputs;
+	// Runtime BlendSpace assets live as long as their player, including graph-only references.
+	std::shared_ptr<UBlendSpace> RuntimeBlendSpace;
 };
 
 struct FLuaAnimationRoot
@@ -324,7 +327,41 @@ void BindNodes(sol::state& Lua)
 	using FBlendSpaceHandle = TLuaAnimNode<FAnimNode_BlendSpacePlayer>;
 	BlendSpace.set_function("SetBlendSpace", [](const FBlendSpaceHandle& Node, const FString& Path)
 	{
-		return Node.Get()->SetBlendSpace(FindGraphAsset<UBlendSpace>(Node.Owner, Path));
+		const bool Result = Node.Get()->SetBlendSpace(FindGraphAsset<UBlendSpace>(Node.Owner, Path));
+		Node.Lifetime->RuntimeBlendSpace.reset();
+		return Result;
+	});
+	// Configure a transient 1D asset without requiring an asset editor or a new file format.
+	// Samples: { { Sequence = "Imported/...fbxbin", Value = 0.5 }, ... }
+	BlendSpace.set_function("SetBlendSpace1D", [](const FBlendSpaceHandle& Node, float Min, float Max, const sol::table& Samples)
+	{
+		Node.Owner.Get();
+		auto Asset = std::shared_ptr<UBlendSpace1D>(NewObject<UBlendSpace1D>());
+		Asset->SetFlags(EObjectFlags::RF_Transient);
+		Asset->SetSkeleton(Node.Owner.Get()->GetSkelMeshComponent()->GetSkeletalMesh()->Skeleton);
+		FBlendParameter Parameter;
+		Parameter.DisplayName = "Speed";
+		Parameter.Min = Min;
+		Parameter.Max = Max;
+		if (!Asset->SetBlendParameter(0, Parameter) || Samples.size() == 0)
+		{
+			throw std::runtime_error("SetBlendSpace1D requires a finite increasing axis and at least one sample");
+		}
+		for (size_t Index = 1; Index <= Samples.size(); ++Index)
+		{
+			const sol::table Sample = Samples.get<sol::table>(Index);
+			const FString Path = Sample.get<FString>("Sequence");
+			const float Value = Sample.get<float>("Value");
+			if (Asset->AddSample(FindGraphAsset<UAnimSequence>(Node.Owner, Path), FVector(Value, 0.0f, 0.0f)) < 0)
+			{
+				throw std::runtime_error("SetBlendSpace1D sample must have a unique finite value within the axis: " + Path);
+			}
+		}
+		Asset->ResampleData();
+		// Publish only after every sample has validated; failure leaves the previous asset intact.
+		Node.Get()->SetBlendSpace(Asset.get());
+		Node.Lifetime->RuntimeBlendSpace = std::move(Asset);
+		return true;
 	});
 	BlendSpace.set_function("SetPosition", [](const FBlendSpaceHandle& Node, FVector Position) { return Node.Get()->SetPosition(Position); });
 	BlendSpace.set_function("SetStartPosition", [](const FBlendSpaceHandle& Node, float Value) { return Node.Get()->SetStartPosition(Value); });
