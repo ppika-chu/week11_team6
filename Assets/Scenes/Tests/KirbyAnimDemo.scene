@@ -1,0 +1,2832 @@
+{
+    "Version": 4,
+    "World": {
+        "PersistentLevel": {
+            "Actors": [
+                {
+                    "Class": "ABoxActor",
+                    "Name": "Floor",
+                    "RootComponent": "CollisionComponent",
+                    "Properties": {},
+                    "Components": [
+                        {
+                            "Class": "UBoxComponent",
+                            "Name": "CollisionComponent",
+                            "Parent": "",
+                            "Properties": {
+                                "BoxExtent": {
+                                    "X": 18.0,
+                                    "Y": 14.0,
+                                    "Z": 0.25
+                                },
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0,
+                                        "Y": 0,
+                                        "Z": -0.25
+                                    },
+                                    "Rotation": {
+                                        "X": -0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0,
+                                        "W": 1.0
+                                    },
+                                    "Scale": {
+                                        "X": 1,
+                                        "Y": 1,
+                                        "Z": 1
+                                    }
+                                },
+                                "bBlockComponent": true,
+                                "bGenerateOverlapEvents": false,
+                                "bDrawOnlyIfSelected": true,
+                                "bVisible": true
+                            }
+                        },
+                        {
+                            "Class": "UStaticMeshComponent",
+                            "Name": "Mesh",
+                            "Parent": "CollisionComponent",
+                            "OverrideMaterials": [
+                                {
+                                    "Base": "DefaultMaterial",
+                                    "Instance": {
+                                        "BlendState": "Opaque",
+                                        "DiffuseOrFactor": {
+                                            "X": 0.12,
+                                            "Y": 0.22,
+                                            "Z": 0.17,
+                                            "W": 1.0
+                                        },
+                                        "EmissiveColor": {
+                                            "X": 0.0,
+                                            "Y": 0.0,
+                                            "Z": 0.0
+                                        },
+                                        "EmissiveFactor": 1.0,
+                                        "Properties": {},
+                                        "SamplerState": "LinearWrap",
+                                        "ShadingModel": "BlinnPhong",
+                                        "Shininess": 32.0,
+                                        "SpecularColor": {
+                                            "X": 1.0,
+                                            "Y": 1.0,
+                                            "Z": 1.0
+                                        },
+                                        "SpecularFactor": 0.08,
+                                        "Textures": [
+                                            "WhiteTexture",
+                                            "FlatNormalTexture"
+                                        ],
+                                        "UVScrollSpeed": [
+                                            0.0,
+                                            0.0
+                                        ]
+                                    }
+                                }
+                            ],
+                            "Properties": {
+                                "StaticMesh": "Cube",
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0,
+                                        "Y": 0,
+                                        "Z": 0
+                                    },
+                                    "Rotation": {
+                                        "X": -0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0,
+                                        "W": 1.0
+                                    },
+                                    "Scale": {
+                                        "X": 36,
+                                        "Y": 28,
+                                        "Z": 0.5
+                                    }
+                                },
+                                "bBlockComponent": false,
+                                "bGenerateOverlapEvents": false,
+                                "bVisible": true,
+                                "bCastShadow": true,
+                                "bReceiveShadow": true,
+                                "bReceivesDecals": true
+                            }
+                        }
+                    ]
+                },
+                {
+                    "Class": "ADirectionalLightActor",
+                    "Components": [
+                        {
+                            "Class": "UDirectionalLightComponent",
+                            "Name": "UDirectionalLightComponent",
+                            "Parent": "",
+                            "Properties": {
+                                "CascadeCount": 4,
+                                "CascadeDistributionExponent": 3.0,
+                                "CascadeTransitionFraction": 0.10000000149011612,
+                                "Intensity": 3.2,
+                                "LightColor": 4294967295,
+                                "ShadowBias": 0.0010000000474974513,
+                                "ShadowDistance": 100.0,
+                                "ShadowMapResolution": 1024,
+                                "ShadowPCFKernelSize": 2,
+                                "SourceAngle": 1.1459156274795532,
+                                "Transform": {
+                                    "Location": {
+                                        "X": -6.0,
+                                        "Y": -6.0,
+                                        "Z": 12.0
+                                    },
+                                    "Rotation": {
+                                        "W": 0.8962007761001587,
+                                        "X": -0.10284744203090668,
+                                        "Y": 0.32619041204452515,
+                                        "Z": 0.282571017742157
+                                    },
+                                    "Scale": {
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    }
+                                },
+                                "bCastShadows": true,
+                                "bUseCSM": true,
+                                "bUsePCSS": false,
+                                "bVisible": true
+                            }
+                        },
+                        {
+                            "Class": "UBillboardComponent",
+                            "Material": {
+                                "Base": "SubUVMaterial",
+                                "Instance": {
+                                    "BlendState": "AlphaBlend",
+                                    "DiffuseOrFactor": {
+                                        "W": 1.0,
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    },
+                                    "EmissiveColor": {
+                                        "X": 0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0
+                                    },
+                                    "EmissiveFactor": 1.0,
+                                    "Properties": {},
+                                    "SamplerState": "LinearClamp",
+                                    "ShadingModel": "BlinnPhong",
+                                    "Shininess": 32.0,
+                                    "SpecularColor": {
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    },
+                                    "SpecularFactor": 1.0,
+                                    "Textures": [
+                                        "Resources/Icons/Directional.png"
+                                    ],
+                                    "UVScrollSpeed": [
+                                        0.0,
+                                        0.0
+                                    ]
+                                }
+                            },
+                            "Name": "UBillboardComponent",
+                            "Parent": "UDirectionalLightComponent",
+                            "Properties": {
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0
+                                    },
+                                    "Rotation": {
+                                        "W": 1.0,
+                                        "X": 0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0
+                                    },
+                                    "Scale": {
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    }
+                                },
+                                "bBlockComponent": false,
+                                "bCastShadow": true,
+                                "bGenerateOverlapEvents": false,
+                                "bReceiveShadow": true,
+                                "bReceivesDecals": true,
+                                "bVisible": true
+                            }
+                        },
+                        {
+                            "Class": "UStaticMeshComponent",
+                            "Name": "UArrowComponent",
+                            "OverrideMaterials": [
+                                {
+                                    "Asset": "EditorArrowMaterial"
+                                }
+                            ],
+                            "Parent": "UDirectionalLightComponent",
+                            "Properties": {
+                                "StaticMesh": "Arrow",
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0
+                                    },
+                                    "Rotation": {
+                                        "W": 0.7071067690849304,
+                                        "X": 0.0,
+                                        "Y": 0.7071067690849304,
+                                        "Z": 0.0
+                                    },
+                                    "Scale": {
+                                        "X": 0.30000001192092896,
+                                        "Y": 0.30000001192092896,
+                                        "Z": 0.5
+                                    }
+                                },
+                                "bBlockComponent": false,
+                                "bCastShadow": true,
+                                "bGenerateOverlapEvents": false,
+                                "bReceiveShadow": true,
+                                "bReceivesDecals": true,
+                                "bVisible": true
+                            }
+                        }
+                    ],
+                    "Name": "Sun",
+                    "Properties": {},
+                    "RootComponent": "UDirectionalLightComponent"
+                },
+                {
+                    "Class": "ASkyLightActor",
+                    "Components": [
+                        {
+                            "Class": "USkyLightComponent",
+                            "Name": "USkyLightComponent",
+                            "Parent": "",
+                            "Properties": {
+                                "Intensity": 0.55,
+                                "LightColor": 4294967295,
+                                "Transform": {
+                                    "Location": {
+                                        "X": 6.0,
+                                        "Y": -6.0,
+                                        "Z": 12.0
+                                    },
+                                    "Rotation": {
+                                        "W": 1.0,
+                                        "X": 0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0
+                                    },
+                                    "Scale": {
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    }
+                                },
+                                "bVisible": true
+                            }
+                        },
+                        {
+                            "Class": "UBillboardComponent",
+                            "Material": {
+                                "Base": "SubUVMaterial",
+                                "Instance": {
+                                    "BlendState": "AlphaBlend",
+                                    "DiffuseOrFactor": {
+                                        "W": 1.0,
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    },
+                                    "EmissiveColor": {
+                                        "X": 0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0
+                                    },
+                                    "EmissiveFactor": 1.0,
+                                    "Properties": {},
+                                    "SamplerState": "LinearClamp",
+                                    "ShadingModel": "BlinnPhong",
+                                    "Shininess": 32.0,
+                                    "SpecularColor": {
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    },
+                                    "SpecularFactor": 1.0,
+                                    "Textures": [
+                                        "Resources/Icons/Sky.png"
+                                    ],
+                                    "UVScrollSpeed": [
+                                        0.0,
+                                        0.0
+                                    ]
+                                }
+                            },
+                            "Name": "UBillboardComponent",
+                            "Parent": "USkyLightComponent",
+                            "Properties": {
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0
+                                    },
+                                    "Rotation": {
+                                        "W": 1.0,
+                                        "X": 0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0
+                                    },
+                                    "Scale": {
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    }
+                                },
+                                "bBlockComponent": false,
+                                "bCastShadow": true,
+                                "bGenerateOverlapEvents": false,
+                                "bReceiveShadow": true,
+                                "bReceivesDecals": true,
+                                "bVisible": true
+                            }
+                        }
+                    ],
+                    "Name": "Sky",
+                    "Properties": {},
+                    "RootComponent": "USkyLightComponent"
+                },
+                {
+                    "Class": "ABoxActor",
+                    "Name": "Step_Low",
+                    "RootComponent": "CollisionComponent",
+                    "Properties": {},
+                    "Components": [
+                        {
+                            "Class": "UBoxComponent",
+                            "Name": "CollisionComponent",
+                            "Parent": "",
+                            "Properties": {
+                                "BoxExtent": {
+                                    "X": 1.2,
+                                    "Y": 1.2,
+                                    "Z": 0.3
+                                },
+                                "Transform": {
+                                    "Location": {
+                                        "X": -4,
+                                        "Y": -3,
+                                        "Z": 0.3
+                                    },
+                                    "Rotation": {
+                                        "X": -0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0,
+                                        "W": 1.0
+                                    },
+                                    "Scale": {
+                                        "X": 1,
+                                        "Y": 1,
+                                        "Z": 1
+                                    }
+                                },
+                                "bBlockComponent": true,
+                                "bGenerateOverlapEvents": false,
+                                "bDrawOnlyIfSelected": true,
+                                "bVisible": true
+                            }
+                        },
+                        {
+                            "Class": "UStaticMeshComponent",
+                            "Name": "Mesh",
+                            "Parent": "CollisionComponent",
+                            "OverrideMaterials": [
+                                {
+                                    "Base": "DefaultMaterial",
+                                    "Instance": {
+                                        "BlendState": "Opaque",
+                                        "DiffuseOrFactor": {
+                                            "X": 0.12,
+                                            "Y": 0.38,
+                                            "Z": 0.62,
+                                            "W": 1.0
+                                        },
+                                        "EmissiveColor": {
+                                            "X": 0.0,
+                                            "Y": 0.0,
+                                            "Z": 0.0
+                                        },
+                                        "EmissiveFactor": 1.0,
+                                        "Properties": {},
+                                        "SamplerState": "LinearWrap",
+                                        "ShadingModel": "BlinnPhong",
+                                        "Shininess": 32.0,
+                                        "SpecularColor": {
+                                            "X": 1.0,
+                                            "Y": 1.0,
+                                            "Z": 1.0
+                                        },
+                                        "SpecularFactor": 0.08,
+                                        "Textures": [
+                                            "WhiteTexture",
+                                            "FlatNormalTexture"
+                                        ],
+                                        "UVScrollSpeed": [
+                                            0.0,
+                                            0.0
+                                        ]
+                                    }
+                                }
+                            ],
+                            "Properties": {
+                                "StaticMesh": "Cube",
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0,
+                                        "Y": 0,
+                                        "Z": 0
+                                    },
+                                    "Rotation": {
+                                        "X": -0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0,
+                                        "W": 1.0
+                                    },
+                                    "Scale": {
+                                        "X": 2.4,
+                                        "Y": 2.4,
+                                        "Z": 0.6
+                                    }
+                                },
+                                "bBlockComponent": false,
+                                "bGenerateOverlapEvents": false,
+                                "bVisible": true,
+                                "bCastShadow": true,
+                                "bReceiveShadow": true,
+                                "bReceivesDecals": true
+                            }
+                        }
+                    ]
+                },
+                {
+                    "Class": "ABoxActor",
+                    "Name": "Step_Mid",
+                    "RootComponent": "CollisionComponent",
+                    "Properties": {},
+                    "Components": [
+                        {
+                            "Class": "UBoxComponent",
+                            "Name": "CollisionComponent",
+                            "Parent": "",
+                            "Properties": {
+                                "BoxExtent": {
+                                    "X": 1.2,
+                                    "Y": 1.2,
+                                    "Z": 0.65
+                                },
+                                "Transform": {
+                                    "Location": {
+                                        "X": -1,
+                                        "Y": -3,
+                                        "Z": 0.65
+                                    },
+                                    "Rotation": {
+                                        "X": -0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0,
+                                        "W": 1.0
+                                    },
+                                    "Scale": {
+                                        "X": 1,
+                                        "Y": 1,
+                                        "Z": 1
+                                    }
+                                },
+                                "bBlockComponent": true,
+                                "bGenerateOverlapEvents": false,
+                                "bDrawOnlyIfSelected": true,
+                                "bVisible": true
+                            }
+                        },
+                        {
+                            "Class": "UStaticMeshComponent",
+                            "Name": "Mesh",
+                            "Parent": "CollisionComponent",
+                            "OverrideMaterials": [
+                                {
+                                    "Base": "DefaultMaterial",
+                                    "Instance": {
+                                        "BlendState": "Opaque",
+                                        "DiffuseOrFactor": {
+                                            "X": 0.12,
+                                            "Y": 0.38,
+                                            "Z": 0.62,
+                                            "W": 1.0
+                                        },
+                                        "EmissiveColor": {
+                                            "X": 0.0,
+                                            "Y": 0.0,
+                                            "Z": 0.0
+                                        },
+                                        "EmissiveFactor": 1.0,
+                                        "Properties": {},
+                                        "SamplerState": "LinearWrap",
+                                        "ShadingModel": "BlinnPhong",
+                                        "Shininess": 32.0,
+                                        "SpecularColor": {
+                                            "X": 1.0,
+                                            "Y": 1.0,
+                                            "Z": 1.0
+                                        },
+                                        "SpecularFactor": 0.08,
+                                        "Textures": [
+                                            "WhiteTexture",
+                                            "FlatNormalTexture"
+                                        ],
+                                        "UVScrollSpeed": [
+                                            0.0,
+                                            0.0
+                                        ]
+                                    }
+                                }
+                            ],
+                            "Properties": {
+                                "StaticMesh": "Cube",
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0,
+                                        "Y": 0,
+                                        "Z": 0
+                                    },
+                                    "Rotation": {
+                                        "X": -0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0,
+                                        "W": 1.0
+                                    },
+                                    "Scale": {
+                                        "X": 2.4,
+                                        "Y": 2.4,
+                                        "Z": 1.3
+                                    }
+                                },
+                                "bBlockComponent": false,
+                                "bGenerateOverlapEvents": false,
+                                "bVisible": true,
+                                "bCastShadow": true,
+                                "bReceiveShadow": true,
+                                "bReceivesDecals": true
+                            }
+                        }
+                    ]
+                },
+                {
+                    "Class": "ABoxActor",
+                    "Name": "Step_High",
+                    "RootComponent": "CollisionComponent",
+                    "Properties": {},
+                    "Components": [
+                        {
+                            "Class": "UBoxComponent",
+                            "Name": "CollisionComponent",
+                            "Parent": "",
+                            "Properties": {
+                                "BoxExtent": {
+                                    "X": 1.2,
+                                    "Y": 1.2,
+                                    "Z": 1.0
+                                },
+                                "Transform": {
+                                    "Location": {
+                                        "X": 2,
+                                        "Y": -3,
+                                        "Z": 1.0
+                                    },
+                                    "Rotation": {
+                                        "X": -0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0,
+                                        "W": 1.0
+                                    },
+                                    "Scale": {
+                                        "X": 1,
+                                        "Y": 1,
+                                        "Z": 1
+                                    }
+                                },
+                                "bBlockComponent": true,
+                                "bGenerateOverlapEvents": false,
+                                "bDrawOnlyIfSelected": true,
+                                "bVisible": true
+                            }
+                        },
+                        {
+                            "Class": "UStaticMeshComponent",
+                            "Name": "Mesh",
+                            "Parent": "CollisionComponent",
+                            "OverrideMaterials": [
+                                {
+                                    "Base": "DefaultMaterial",
+                                    "Instance": {
+                                        "BlendState": "Opaque",
+                                        "DiffuseOrFactor": {
+                                            "X": 0.12,
+                                            "Y": 0.38,
+                                            "Z": 0.62,
+                                            "W": 1.0
+                                        },
+                                        "EmissiveColor": {
+                                            "X": 0.0,
+                                            "Y": 0.0,
+                                            "Z": 0.0
+                                        },
+                                        "EmissiveFactor": 1.0,
+                                        "Properties": {},
+                                        "SamplerState": "LinearWrap",
+                                        "ShadingModel": "BlinnPhong",
+                                        "Shininess": 32.0,
+                                        "SpecularColor": {
+                                            "X": 1.0,
+                                            "Y": 1.0,
+                                            "Z": 1.0
+                                        },
+                                        "SpecularFactor": 0.08,
+                                        "Textures": [
+                                            "WhiteTexture",
+                                            "FlatNormalTexture"
+                                        ],
+                                        "UVScrollSpeed": [
+                                            0.0,
+                                            0.0
+                                        ]
+                                    }
+                                }
+                            ],
+                            "Properties": {
+                                "StaticMesh": "Cube",
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0,
+                                        "Y": 0,
+                                        "Z": 0
+                                    },
+                                    "Rotation": {
+                                        "X": -0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0,
+                                        "W": 1.0
+                                    },
+                                    "Scale": {
+                                        "X": 2.4,
+                                        "Y": 2.4,
+                                        "Z": 2.0
+                                    }
+                                },
+                                "bBlockComponent": false,
+                                "bGenerateOverlapEvents": false,
+                                "bVisible": true,
+                                "bCastShadow": true,
+                                "bReceiveShadow": true,
+                                "bReceivesDecals": true
+                            }
+                        }
+                    ]
+                },
+                {
+                    "Class": "ABoxActor",
+                    "Name": "Wall_Center",
+                    "RootComponent": "CollisionComponent",
+                    "Properties": {},
+                    "Components": [
+                        {
+                            "Class": "UBoxComponent",
+                            "Name": "CollisionComponent",
+                            "Parent": "",
+                            "Properties": {
+                                "BoxExtent": {
+                                    "X": 0.6,
+                                    "Y": 2.75,
+                                    "Z": 1.15
+                                },
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0,
+                                        "Y": 3,
+                                        "Z": 1.15
+                                    },
+                                    "Rotation": {
+                                        "X": -0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0,
+                                        "W": 1.0
+                                    },
+                                    "Scale": {
+                                        "X": 1,
+                                        "Y": 1,
+                                        "Z": 1
+                                    }
+                                },
+                                "bBlockComponent": true,
+                                "bGenerateOverlapEvents": false,
+                                "bDrawOnlyIfSelected": true,
+                                "bVisible": true
+                            }
+                        },
+                        {
+                            "Class": "UStaticMeshComponent",
+                            "Name": "Mesh",
+                            "Parent": "CollisionComponent",
+                            "OverrideMaterials": [
+                                {
+                                    "Base": "DefaultMaterial",
+                                    "Instance": {
+                                        "BlendState": "Opaque",
+                                        "DiffuseOrFactor": {
+                                            "X": 0.7,
+                                            "Y": 0.29,
+                                            "Z": 0.08,
+                                            "W": 1.0
+                                        },
+                                        "EmissiveColor": {
+                                            "X": 0.0,
+                                            "Y": 0.0,
+                                            "Z": 0.0
+                                        },
+                                        "EmissiveFactor": 1.0,
+                                        "Properties": {},
+                                        "SamplerState": "LinearWrap",
+                                        "ShadingModel": "BlinnPhong",
+                                        "Shininess": 32.0,
+                                        "SpecularColor": {
+                                            "X": 1.0,
+                                            "Y": 1.0,
+                                            "Z": 1.0
+                                        },
+                                        "SpecularFactor": 0.08,
+                                        "Textures": [
+                                            "WhiteTexture",
+                                            "FlatNormalTexture"
+                                        ],
+                                        "UVScrollSpeed": [
+                                            0.0,
+                                            0.0
+                                        ]
+                                    }
+                                }
+                            ],
+                            "Properties": {
+                                "StaticMesh": "Cube",
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0,
+                                        "Y": 0,
+                                        "Z": 0
+                                    },
+                                    "Rotation": {
+                                        "X": -0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0,
+                                        "W": 1.0
+                                    },
+                                    "Scale": {
+                                        "X": 1.2,
+                                        "Y": 5.5,
+                                        "Z": 2.3
+                                    }
+                                },
+                                "bBlockComponent": false,
+                                "bGenerateOverlapEvents": false,
+                                "bVisible": true,
+                                "bCastShadow": true,
+                                "bReceiveShadow": true,
+                                "bReceivesDecals": true
+                            }
+                        }
+                    ]
+                },
+                {
+                    "Class": "ABoxActor",
+                    "Name": "Slalom_A",
+                    "RootComponent": "CollisionComponent",
+                    "Properties": {},
+                    "Components": [
+                        {
+                            "Class": "UBoxComponent",
+                            "Name": "CollisionComponent",
+                            "Parent": "",
+                            "Properties": {
+                                "BoxExtent": {
+                                    "X": 1.0,
+                                    "Y": 1.0,
+                                    "Z": 0.8
+                                },
+                                "Transform": {
+                                    "Location": {
+                                        "X": -6,
+                                        "Y": 5,
+                                        "Z": 0.8
+                                    },
+                                    "Rotation": {
+                                        "X": -0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0,
+                                        "W": 1.0
+                                    },
+                                    "Scale": {
+                                        "X": 1,
+                                        "Y": 1,
+                                        "Z": 1
+                                    }
+                                },
+                                "bBlockComponent": true,
+                                "bGenerateOverlapEvents": false,
+                                "bDrawOnlyIfSelected": true,
+                                "bVisible": true
+                            }
+                        },
+                        {
+                            "Class": "UStaticMeshComponent",
+                            "Name": "Mesh",
+                            "Parent": "CollisionComponent",
+                            "OverrideMaterials": [
+                                {
+                                    "Base": "DefaultMaterial",
+                                    "Instance": {
+                                        "BlendState": "Opaque",
+                                        "DiffuseOrFactor": {
+                                            "X": 0.7,
+                                            "Y": 0.29,
+                                            "Z": 0.08,
+                                            "W": 1.0
+                                        },
+                                        "EmissiveColor": {
+                                            "X": 0.0,
+                                            "Y": 0.0,
+                                            "Z": 0.0
+                                        },
+                                        "EmissiveFactor": 1.0,
+                                        "Properties": {},
+                                        "SamplerState": "LinearWrap",
+                                        "ShadingModel": "BlinnPhong",
+                                        "Shininess": 32.0,
+                                        "SpecularColor": {
+                                            "X": 1.0,
+                                            "Y": 1.0,
+                                            "Z": 1.0
+                                        },
+                                        "SpecularFactor": 0.08,
+                                        "Textures": [
+                                            "WhiteTexture",
+                                            "FlatNormalTexture"
+                                        ],
+                                        "UVScrollSpeed": [
+                                            0.0,
+                                            0.0
+                                        ]
+                                    }
+                                }
+                            ],
+                            "Properties": {
+                                "StaticMesh": "Cube",
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0,
+                                        "Y": 0,
+                                        "Z": 0
+                                    },
+                                    "Rotation": {
+                                        "X": -0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0,
+                                        "W": 1.0
+                                    },
+                                    "Scale": {
+                                        "X": 2,
+                                        "Y": 2,
+                                        "Z": 1.6
+                                    }
+                                },
+                                "bBlockComponent": false,
+                                "bGenerateOverlapEvents": false,
+                                "bVisible": true,
+                                "bCastShadow": true,
+                                "bReceiveShadow": true,
+                                "bReceivesDecals": true
+                            }
+                        }
+                    ]
+                },
+                {
+                    "Class": "ABoxActor",
+                    "Name": "Slalom_B",
+                    "RootComponent": "CollisionComponent",
+                    "Properties": {},
+                    "Components": [
+                        {
+                            "Class": "UBoxComponent",
+                            "Name": "CollisionComponent",
+                            "Parent": "",
+                            "Properties": {
+                                "BoxExtent": {
+                                    "X": 1.0,
+                                    "Y": 1.0,
+                                    "Z": 0.8
+                                },
+                                "Transform": {
+                                    "Location": {
+                                        "X": -2,
+                                        "Y": 8,
+                                        "Z": 0.8
+                                    },
+                                    "Rotation": {
+                                        "X": -0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0,
+                                        "W": 1.0
+                                    },
+                                    "Scale": {
+                                        "X": 1,
+                                        "Y": 1,
+                                        "Z": 1
+                                    }
+                                },
+                                "bBlockComponent": true,
+                                "bGenerateOverlapEvents": false,
+                                "bDrawOnlyIfSelected": true,
+                                "bVisible": true
+                            }
+                        },
+                        {
+                            "Class": "UStaticMeshComponent",
+                            "Name": "Mesh",
+                            "Parent": "CollisionComponent",
+                            "OverrideMaterials": [
+                                {
+                                    "Base": "DefaultMaterial",
+                                    "Instance": {
+                                        "BlendState": "Opaque",
+                                        "DiffuseOrFactor": {
+                                            "X": 0.7,
+                                            "Y": 0.29,
+                                            "Z": 0.08,
+                                            "W": 1.0
+                                        },
+                                        "EmissiveColor": {
+                                            "X": 0.0,
+                                            "Y": 0.0,
+                                            "Z": 0.0
+                                        },
+                                        "EmissiveFactor": 1.0,
+                                        "Properties": {},
+                                        "SamplerState": "LinearWrap",
+                                        "ShadingModel": "BlinnPhong",
+                                        "Shininess": 32.0,
+                                        "SpecularColor": {
+                                            "X": 1.0,
+                                            "Y": 1.0,
+                                            "Z": 1.0
+                                        },
+                                        "SpecularFactor": 0.08,
+                                        "Textures": [
+                                            "WhiteTexture",
+                                            "FlatNormalTexture"
+                                        ],
+                                        "UVScrollSpeed": [
+                                            0.0,
+                                            0.0
+                                        ]
+                                    }
+                                }
+                            ],
+                            "Properties": {
+                                "StaticMesh": "Cube",
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0,
+                                        "Y": 0,
+                                        "Z": 0
+                                    },
+                                    "Rotation": {
+                                        "X": -0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0,
+                                        "W": 1.0
+                                    },
+                                    "Scale": {
+                                        "X": 2,
+                                        "Y": 2,
+                                        "Z": 1.6
+                                    }
+                                },
+                                "bBlockComponent": false,
+                                "bGenerateOverlapEvents": false,
+                                "bVisible": true,
+                                "bCastShadow": true,
+                                "bReceiveShadow": true,
+                                "bReceivesDecals": true
+                            }
+                        }
+                    ]
+                },
+                {
+                    "Class": "ABoxActor",
+                    "Name": "Pillar_Tall",
+                    "RootComponent": "CollisionComponent",
+                    "Properties": {},
+                    "Components": [
+                        {
+                            "Class": "UBoxComponent",
+                            "Name": "CollisionComponent",
+                            "Parent": "",
+                            "Properties": {
+                                "BoxExtent": {
+                                    "X": 0.9,
+                                    "Y": 0.9,
+                                    "Z": 1.5
+                                },
+                                "Transform": {
+                                    "Location": {
+                                        "X": 5,
+                                        "Y": 6,
+                                        "Z": 1.5
+                                    },
+                                    "Rotation": {
+                                        "X": -0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0,
+                                        "W": 1.0
+                                    },
+                                    "Scale": {
+                                        "X": 1,
+                                        "Y": 1,
+                                        "Z": 1
+                                    }
+                                },
+                                "bBlockComponent": true,
+                                "bGenerateOverlapEvents": false,
+                                "bDrawOnlyIfSelected": true,
+                                "bVisible": true
+                            }
+                        },
+                        {
+                            "Class": "UStaticMeshComponent",
+                            "Name": "Mesh",
+                            "Parent": "CollisionComponent",
+                            "OverrideMaterials": [
+                                {
+                                    "Base": "DefaultMaterial",
+                                    "Instance": {
+                                        "BlendState": "Opaque",
+                                        "DiffuseOrFactor": {
+                                            "X": 0.7,
+                                            "Y": 0.29,
+                                            "Z": 0.08,
+                                            "W": 1.0
+                                        },
+                                        "EmissiveColor": {
+                                            "X": 0.0,
+                                            "Y": 0.0,
+                                            "Z": 0.0
+                                        },
+                                        "EmissiveFactor": 1.0,
+                                        "Properties": {},
+                                        "SamplerState": "LinearWrap",
+                                        "ShadingModel": "BlinnPhong",
+                                        "Shininess": 32.0,
+                                        "SpecularColor": {
+                                            "X": 1.0,
+                                            "Y": 1.0,
+                                            "Z": 1.0
+                                        },
+                                        "SpecularFactor": 0.08,
+                                        "Textures": [
+                                            "WhiteTexture",
+                                            "FlatNormalTexture"
+                                        ],
+                                        "UVScrollSpeed": [
+                                            0.0,
+                                            0.0
+                                        ]
+                                    }
+                                }
+                            ],
+                            "Properties": {
+                                "StaticMesh": "Cube",
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0,
+                                        "Y": 0,
+                                        "Z": 0
+                                    },
+                                    "Rotation": {
+                                        "X": -0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0,
+                                        "W": 1.0
+                                    },
+                                    "Scale": {
+                                        "X": 1.8,
+                                        "Y": 1.8,
+                                        "Z": 3.0
+                                    }
+                                },
+                                "bBlockComponent": false,
+                                "bGenerateOverlapEvents": false,
+                                "bVisible": true,
+                                "bCastShadow": true,
+                                "bReceiveShadow": true,
+                                "bReceivesDecals": true
+                            }
+                        }
+                    ]
+                },
+                {
+                    "Class": "ABoxActor",
+                    "Name": "Pillar_Short",
+                    "RootComponent": "CollisionComponent",
+                    "Properties": {},
+                    "Components": [
+                        {
+                            "Class": "UBoxComponent",
+                            "Name": "CollisionComponent",
+                            "Parent": "",
+                            "Properties": {
+                                "BoxExtent": {
+                                    "X": 0.9,
+                                    "Y": 0.9,
+                                    "Z": 1.0
+                                },
+                                "Transform": {
+                                    "Location": {
+                                        "X": 8,
+                                        "Y": 6,
+                                        "Z": 1.0
+                                    },
+                                    "Rotation": {
+                                        "X": -0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0,
+                                        "W": 1.0
+                                    },
+                                    "Scale": {
+                                        "X": 1,
+                                        "Y": 1,
+                                        "Z": 1
+                                    }
+                                },
+                                "bBlockComponent": true,
+                                "bGenerateOverlapEvents": false,
+                                "bDrawOnlyIfSelected": true,
+                                "bVisible": true
+                            }
+                        },
+                        {
+                            "Class": "UStaticMeshComponent",
+                            "Name": "Mesh",
+                            "Parent": "CollisionComponent",
+                            "OverrideMaterials": [
+                                {
+                                    "Base": "DefaultMaterial",
+                                    "Instance": {
+                                        "BlendState": "Opaque",
+                                        "DiffuseOrFactor": {
+                                            "X": 0.7,
+                                            "Y": 0.29,
+                                            "Z": 0.08,
+                                            "W": 1.0
+                                        },
+                                        "EmissiveColor": {
+                                            "X": 0.0,
+                                            "Y": 0.0,
+                                            "Z": 0.0
+                                        },
+                                        "EmissiveFactor": 1.0,
+                                        "Properties": {},
+                                        "SamplerState": "LinearWrap",
+                                        "ShadingModel": "BlinnPhong",
+                                        "Shininess": 32.0,
+                                        "SpecularColor": {
+                                            "X": 1.0,
+                                            "Y": 1.0,
+                                            "Z": 1.0
+                                        },
+                                        "SpecularFactor": 0.08,
+                                        "Textures": [
+                                            "WhiteTexture",
+                                            "FlatNormalTexture"
+                                        ],
+                                        "UVScrollSpeed": [
+                                            0.0,
+                                            0.0
+                                        ]
+                                    }
+                                }
+                            ],
+                            "Properties": {
+                                "StaticMesh": "Cube",
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0,
+                                        "Y": 0,
+                                        "Z": 0
+                                    },
+                                    "Rotation": {
+                                        "X": -0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0,
+                                        "W": 1.0
+                                    },
+                                    "Scale": {
+                                        "X": 1.8,
+                                        "Y": 1.8,
+                                        "Z": 2.0
+                                    }
+                                },
+                                "bBlockComponent": false,
+                                "bGenerateOverlapEvents": false,
+                                "bVisible": true,
+                                "bCastShadow": true,
+                                "bReceiveShadow": true,
+                                "bReceivesDecals": true
+                            }
+                        }
+                    ]
+                },
+                {
+                    "Class": "ABoxActor",
+                    "Name": "Arch_Left",
+                    "RootComponent": "CollisionComponent",
+                    "Properties": {},
+                    "Components": [
+                        {
+                            "Class": "UBoxComponent",
+                            "Name": "CollisionComponent",
+                            "Parent": "",
+                            "Properties": {
+                                "BoxExtent": {
+                                    "X": 0.6,
+                                    "Y": 0.6,
+                                    "Z": 1.25
+                                },
+                                "Transform": {
+                                    "Location": {
+                                        "X": 7,
+                                        "Y": -9,
+                                        "Z": 1.25
+                                    },
+                                    "Rotation": {
+                                        "X": -0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0,
+                                        "W": 1.0
+                                    },
+                                    "Scale": {
+                                        "X": 1,
+                                        "Y": 1,
+                                        "Z": 1
+                                    }
+                                },
+                                "bBlockComponent": true,
+                                "bGenerateOverlapEvents": false,
+                                "bDrawOnlyIfSelected": true,
+                                "bVisible": true
+                            }
+                        },
+                        {
+                            "Class": "UStaticMeshComponent",
+                            "Name": "Mesh",
+                            "Parent": "CollisionComponent",
+                            "OverrideMaterials": [
+                                {
+                                    "Base": "DefaultMaterial",
+                                    "Instance": {
+                                        "BlendState": "Opaque",
+                                        "DiffuseOrFactor": {
+                                            "X": 0.5,
+                                            "Y": 0.16,
+                                            "Z": 0.3,
+                                            "W": 1.0
+                                        },
+                                        "EmissiveColor": {
+                                            "X": 0.0,
+                                            "Y": 0.0,
+                                            "Z": 0.0
+                                        },
+                                        "EmissiveFactor": 1.0,
+                                        "Properties": {},
+                                        "SamplerState": "LinearWrap",
+                                        "ShadingModel": "BlinnPhong",
+                                        "Shininess": 32.0,
+                                        "SpecularColor": {
+                                            "X": 1.0,
+                                            "Y": 1.0,
+                                            "Z": 1.0
+                                        },
+                                        "SpecularFactor": 0.08,
+                                        "Textures": [
+                                            "WhiteTexture",
+                                            "FlatNormalTexture"
+                                        ],
+                                        "UVScrollSpeed": [
+                                            0.0,
+                                            0.0
+                                        ]
+                                    }
+                                }
+                            ],
+                            "Properties": {
+                                "StaticMesh": "Cube",
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0,
+                                        "Y": 0,
+                                        "Z": 0
+                                    },
+                                    "Rotation": {
+                                        "X": -0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0,
+                                        "W": 1.0
+                                    },
+                                    "Scale": {
+                                        "X": 1.2,
+                                        "Y": 1.2,
+                                        "Z": 2.5
+                                    }
+                                },
+                                "bBlockComponent": false,
+                                "bGenerateOverlapEvents": false,
+                                "bVisible": true,
+                                "bCastShadow": true,
+                                "bReceiveShadow": true,
+                                "bReceivesDecals": true
+                            }
+                        }
+                    ]
+                },
+                {
+                    "Class": "ABoxActor",
+                    "Name": "Arch_Right",
+                    "RootComponent": "CollisionComponent",
+                    "Properties": {},
+                    "Components": [
+                        {
+                            "Class": "UBoxComponent",
+                            "Name": "CollisionComponent",
+                            "Parent": "",
+                            "Properties": {
+                                "BoxExtent": {
+                                    "X": 0.6,
+                                    "Y": 0.6,
+                                    "Z": 1.25
+                                },
+                                "Transform": {
+                                    "Location": {
+                                        "X": 7,
+                                        "Y": -5,
+                                        "Z": 1.25
+                                    },
+                                    "Rotation": {
+                                        "X": -0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0,
+                                        "W": 1.0
+                                    },
+                                    "Scale": {
+                                        "X": 1,
+                                        "Y": 1,
+                                        "Z": 1
+                                    }
+                                },
+                                "bBlockComponent": true,
+                                "bGenerateOverlapEvents": false,
+                                "bDrawOnlyIfSelected": true,
+                                "bVisible": true
+                            }
+                        },
+                        {
+                            "Class": "UStaticMeshComponent",
+                            "Name": "Mesh",
+                            "Parent": "CollisionComponent",
+                            "OverrideMaterials": [
+                                {
+                                    "Base": "DefaultMaterial",
+                                    "Instance": {
+                                        "BlendState": "Opaque",
+                                        "DiffuseOrFactor": {
+                                            "X": 0.5,
+                                            "Y": 0.16,
+                                            "Z": 0.3,
+                                            "W": 1.0
+                                        },
+                                        "EmissiveColor": {
+                                            "X": 0.0,
+                                            "Y": 0.0,
+                                            "Z": 0.0
+                                        },
+                                        "EmissiveFactor": 1.0,
+                                        "Properties": {},
+                                        "SamplerState": "LinearWrap",
+                                        "ShadingModel": "BlinnPhong",
+                                        "Shininess": 32.0,
+                                        "SpecularColor": {
+                                            "X": 1.0,
+                                            "Y": 1.0,
+                                            "Z": 1.0
+                                        },
+                                        "SpecularFactor": 0.08,
+                                        "Textures": [
+                                            "WhiteTexture",
+                                            "FlatNormalTexture"
+                                        ],
+                                        "UVScrollSpeed": [
+                                            0.0,
+                                            0.0
+                                        ]
+                                    }
+                                }
+                            ],
+                            "Properties": {
+                                "StaticMesh": "Cube",
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0,
+                                        "Y": 0,
+                                        "Z": 0
+                                    },
+                                    "Rotation": {
+                                        "X": -0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0,
+                                        "W": 1.0
+                                    },
+                                    "Scale": {
+                                        "X": 1.2,
+                                        "Y": 1.2,
+                                        "Z": 2.5
+                                    }
+                                },
+                                "bBlockComponent": false,
+                                "bGenerateOverlapEvents": false,
+                                "bVisible": true,
+                                "bCastShadow": true,
+                                "bReceiveShadow": true,
+                                "bReceivesDecals": true
+                            }
+                        }
+                    ]
+                },
+                {
+                    "Class": "ABoxActor",
+                    "Name": "Arch_Ceiling",
+                    "RootComponent": "CollisionComponent",
+                    "Properties": {},
+                    "Components": [
+                        {
+                            "Class": "UBoxComponent",
+                            "Name": "CollisionComponent",
+                            "Parent": "",
+                            "Properties": {
+                                "BoxExtent": {
+                                    "X": 0.6,
+                                    "Y": 2.6,
+                                    "Z": 0.3
+                                },
+                                "Transform": {
+                                    "Location": {
+                                        "X": 7,
+                                        "Y": -7,
+                                        "Z": 2.7
+                                    },
+                                    "Rotation": {
+                                        "X": -0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0,
+                                        "W": 1.0
+                                    },
+                                    "Scale": {
+                                        "X": 1,
+                                        "Y": 1,
+                                        "Z": 1
+                                    }
+                                },
+                                "bBlockComponent": true,
+                                "bGenerateOverlapEvents": false,
+                                "bDrawOnlyIfSelected": true,
+                                "bVisible": true
+                            }
+                        },
+                        {
+                            "Class": "UStaticMeshComponent",
+                            "Name": "Mesh",
+                            "Parent": "CollisionComponent",
+                            "OverrideMaterials": [
+                                {
+                                    "Base": "DefaultMaterial",
+                                    "Instance": {
+                                        "BlendState": "Opaque",
+                                        "DiffuseOrFactor": {
+                                            "X": 0.5,
+                                            "Y": 0.16,
+                                            "Z": 0.3,
+                                            "W": 1.0
+                                        },
+                                        "EmissiveColor": {
+                                            "X": 0.0,
+                                            "Y": 0.0,
+                                            "Z": 0.0
+                                        },
+                                        "EmissiveFactor": 1.0,
+                                        "Properties": {},
+                                        "SamplerState": "LinearWrap",
+                                        "ShadingModel": "BlinnPhong",
+                                        "Shininess": 32.0,
+                                        "SpecularColor": {
+                                            "X": 1.0,
+                                            "Y": 1.0,
+                                            "Z": 1.0
+                                        },
+                                        "SpecularFactor": 0.08,
+                                        "Textures": [
+                                            "WhiteTexture",
+                                            "FlatNormalTexture"
+                                        ],
+                                        "UVScrollSpeed": [
+                                            0.0,
+                                            0.0
+                                        ]
+                                    }
+                                }
+                            ],
+                            "Properties": {
+                                "StaticMesh": "Cube",
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0,
+                                        "Y": 0,
+                                        "Z": 0
+                                    },
+                                    "Rotation": {
+                                        "X": -0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0,
+                                        "W": 1.0
+                                    },
+                                    "Scale": {
+                                        "X": 1.2,
+                                        "Y": 5.2,
+                                        "Z": 0.6
+                                    }
+                                },
+                                "bBlockComponent": false,
+                                "bGenerateOverlapEvents": false,
+                                "bVisible": true,
+                                "bCastShadow": true,
+                                "bReceiveShadow": true,
+                                "bReceivesDecals": true
+                            }
+                        }
+                    ]
+                },
+                {
+                    "Class": "ABoxActor",
+                    "Name": "Wall_Thin",
+                    "RootComponent": "CollisionComponent",
+                    "Properties": {},
+                    "Components": [
+                        {
+                            "Class": "UBoxComponent",
+                            "Name": "CollisionComponent",
+                            "Parent": "",
+                            "Properties": {
+                                "BoxExtent": {
+                                    "X": 0.25,
+                                    "Y": 2.5,
+                                    "Z": 1.0
+                                },
+                                "Transform": {
+                                    "Location": {
+                                        "X": 11,
+                                        "Y": 0,
+                                        "Z": 1.0
+                                    },
+                                    "Rotation": {
+                                        "X": -0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0,
+                                        "W": 1.0
+                                    },
+                                    "Scale": {
+                                        "X": 1,
+                                        "Y": 1,
+                                        "Z": 1
+                                    }
+                                },
+                                "bBlockComponent": true,
+                                "bGenerateOverlapEvents": false,
+                                "bDrawOnlyIfSelected": true,
+                                "bVisible": true
+                            }
+                        },
+                        {
+                            "Class": "UStaticMeshComponent",
+                            "Name": "Mesh",
+                            "Parent": "CollisionComponent",
+                            "OverrideMaterials": [
+                                {
+                                    "Base": "DefaultMaterial",
+                                    "Instance": {
+                                        "BlendState": "Opaque",
+                                        "DiffuseOrFactor": {
+                                            "X": 0.7,
+                                            "Y": 0.29,
+                                            "Z": 0.08,
+                                            "W": 1.0
+                                        },
+                                        "EmissiveColor": {
+                                            "X": 0.0,
+                                            "Y": 0.0,
+                                            "Z": 0.0
+                                        },
+                                        "EmissiveFactor": 1.0,
+                                        "Properties": {},
+                                        "SamplerState": "LinearWrap",
+                                        "ShadingModel": "BlinnPhong",
+                                        "Shininess": 32.0,
+                                        "SpecularColor": {
+                                            "X": 1.0,
+                                            "Y": 1.0,
+                                            "Z": 1.0
+                                        },
+                                        "SpecularFactor": 0.08,
+                                        "Textures": [
+                                            "WhiteTexture",
+                                            "FlatNormalTexture"
+                                        ],
+                                        "UVScrollSpeed": [
+                                            0.0,
+                                            0.0
+                                        ]
+                                    }
+                                }
+                            ],
+                            "Properties": {
+                                "StaticMesh": "Cube",
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0,
+                                        "Y": 0,
+                                        "Z": 0
+                                    },
+                                    "Rotation": {
+                                        "X": -0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0,
+                                        "W": 1.0
+                                    },
+                                    "Scale": {
+                                        "X": 0.5,
+                                        "Y": 5,
+                                        "Z": 2
+                                    }
+                                },
+                                "bBlockComponent": false,
+                                "bGenerateOverlapEvents": false,
+                                "bVisible": true,
+                                "bCastShadow": true,
+                                "bReceiveShadow": true,
+                                "bReceivesDecals": true
+                            }
+                        }
+                    ]
+                },
+                {
+                    "Class": "ABoxActor",
+                    "Name": "Boundary_North",
+                    "RootComponent": "CollisionComponent",
+                    "Properties": {},
+                    "Components": [
+                        {
+                            "Class": "UBoxComponent",
+                            "Name": "CollisionComponent",
+                            "Parent": "",
+                            "Properties": {
+                                "BoxExtent": {
+                                    "X": 18.0,
+                                    "Y": 0.3,
+                                    "Z": 0.55
+                                },
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0,
+                                        "Y": 13.7,
+                                        "Z": 0.55
+                                    },
+                                    "Rotation": {
+                                        "X": -0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0,
+                                        "W": 1.0
+                                    },
+                                    "Scale": {
+                                        "X": 1,
+                                        "Y": 1,
+                                        "Z": 1
+                                    }
+                                },
+                                "bBlockComponent": true,
+                                "bGenerateOverlapEvents": false,
+                                "bDrawOnlyIfSelected": true,
+                                "bVisible": true
+                            }
+                        },
+                        {
+                            "Class": "UStaticMeshComponent",
+                            "Name": "Mesh",
+                            "Parent": "CollisionComponent",
+                            "OverrideMaterials": [
+                                {
+                                    "Base": "DefaultMaterial",
+                                    "Instance": {
+                                        "BlendState": "Opaque",
+                                        "DiffuseOrFactor": {
+                                            "X": 0.15,
+                                            "Y": 0.28,
+                                            "Z": 0.22,
+                                            "W": 1.0
+                                        },
+                                        "EmissiveColor": {
+                                            "X": 0.0,
+                                            "Y": 0.0,
+                                            "Z": 0.0
+                                        },
+                                        "EmissiveFactor": 1.0,
+                                        "Properties": {},
+                                        "SamplerState": "LinearWrap",
+                                        "ShadingModel": "BlinnPhong",
+                                        "Shininess": 32.0,
+                                        "SpecularColor": {
+                                            "X": 1.0,
+                                            "Y": 1.0,
+                                            "Z": 1.0
+                                        },
+                                        "SpecularFactor": 0.08,
+                                        "Textures": [
+                                            "WhiteTexture",
+                                            "FlatNormalTexture"
+                                        ],
+                                        "UVScrollSpeed": [
+                                            0.0,
+                                            0.0
+                                        ]
+                                    }
+                                }
+                            ],
+                            "Properties": {
+                                "StaticMesh": "Cube",
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0,
+                                        "Y": 0,
+                                        "Z": 0
+                                    },
+                                    "Rotation": {
+                                        "X": -0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0,
+                                        "W": 1.0
+                                    },
+                                    "Scale": {
+                                        "X": 36,
+                                        "Y": 0.6,
+                                        "Z": 1.1
+                                    }
+                                },
+                                "bBlockComponent": false,
+                                "bGenerateOverlapEvents": false,
+                                "bVisible": true,
+                                "bCastShadow": true,
+                                "bReceiveShadow": true,
+                                "bReceivesDecals": true
+                            }
+                        }
+                    ]
+                },
+                {
+                    "Class": "ABoxActor",
+                    "Name": "Boundary_South",
+                    "RootComponent": "CollisionComponent",
+                    "Properties": {},
+                    "Components": [
+                        {
+                            "Class": "UBoxComponent",
+                            "Name": "CollisionComponent",
+                            "Parent": "",
+                            "Properties": {
+                                "BoxExtent": {
+                                    "X": 18.0,
+                                    "Y": 0.3,
+                                    "Z": 0.55
+                                },
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0,
+                                        "Y": -13.7,
+                                        "Z": 0.55
+                                    },
+                                    "Rotation": {
+                                        "X": -0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0,
+                                        "W": 1.0
+                                    },
+                                    "Scale": {
+                                        "X": 1,
+                                        "Y": 1,
+                                        "Z": 1
+                                    }
+                                },
+                                "bBlockComponent": true,
+                                "bGenerateOverlapEvents": false,
+                                "bDrawOnlyIfSelected": true,
+                                "bVisible": true
+                            }
+                        },
+                        {
+                            "Class": "UStaticMeshComponent",
+                            "Name": "Mesh",
+                            "Parent": "CollisionComponent",
+                            "OverrideMaterials": [
+                                {
+                                    "Base": "DefaultMaterial",
+                                    "Instance": {
+                                        "BlendState": "Opaque",
+                                        "DiffuseOrFactor": {
+                                            "X": 0.15,
+                                            "Y": 0.28,
+                                            "Z": 0.22,
+                                            "W": 1.0
+                                        },
+                                        "EmissiveColor": {
+                                            "X": 0.0,
+                                            "Y": 0.0,
+                                            "Z": 0.0
+                                        },
+                                        "EmissiveFactor": 1.0,
+                                        "Properties": {},
+                                        "SamplerState": "LinearWrap",
+                                        "ShadingModel": "BlinnPhong",
+                                        "Shininess": 32.0,
+                                        "SpecularColor": {
+                                            "X": 1.0,
+                                            "Y": 1.0,
+                                            "Z": 1.0
+                                        },
+                                        "SpecularFactor": 0.08,
+                                        "Textures": [
+                                            "WhiteTexture",
+                                            "FlatNormalTexture"
+                                        ],
+                                        "UVScrollSpeed": [
+                                            0.0,
+                                            0.0
+                                        ]
+                                    }
+                                }
+                            ],
+                            "Properties": {
+                                "StaticMesh": "Cube",
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0,
+                                        "Y": 0,
+                                        "Z": 0
+                                    },
+                                    "Rotation": {
+                                        "X": -0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0,
+                                        "W": 1.0
+                                    },
+                                    "Scale": {
+                                        "X": 36,
+                                        "Y": 0.6,
+                                        "Z": 1.1
+                                    }
+                                },
+                                "bBlockComponent": false,
+                                "bGenerateOverlapEvents": false,
+                                "bVisible": true,
+                                "bCastShadow": true,
+                                "bReceiveShadow": true,
+                                "bReceivesDecals": true
+                            }
+                        }
+                    ]
+                },
+                {
+                    "Class": "ABoxActor",
+                    "Name": "Boundary_West",
+                    "RootComponent": "CollisionComponent",
+                    "Properties": {},
+                    "Components": [
+                        {
+                            "Class": "UBoxComponent",
+                            "Name": "CollisionComponent",
+                            "Parent": "",
+                            "Properties": {
+                                "BoxExtent": {
+                                    "X": 0.3,
+                                    "Y": 13.4,
+                                    "Z": 0.55
+                                },
+                                "Transform": {
+                                    "Location": {
+                                        "X": -17.7,
+                                        "Y": 0,
+                                        "Z": 0.55
+                                    },
+                                    "Rotation": {
+                                        "X": -0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0,
+                                        "W": 1.0
+                                    },
+                                    "Scale": {
+                                        "X": 1,
+                                        "Y": 1,
+                                        "Z": 1
+                                    }
+                                },
+                                "bBlockComponent": true,
+                                "bGenerateOverlapEvents": false,
+                                "bDrawOnlyIfSelected": true,
+                                "bVisible": true
+                            }
+                        },
+                        {
+                            "Class": "UStaticMeshComponent",
+                            "Name": "Mesh",
+                            "Parent": "CollisionComponent",
+                            "OverrideMaterials": [
+                                {
+                                    "Base": "DefaultMaterial",
+                                    "Instance": {
+                                        "BlendState": "Opaque",
+                                        "DiffuseOrFactor": {
+                                            "X": 0.15,
+                                            "Y": 0.28,
+                                            "Z": 0.22,
+                                            "W": 1.0
+                                        },
+                                        "EmissiveColor": {
+                                            "X": 0.0,
+                                            "Y": 0.0,
+                                            "Z": 0.0
+                                        },
+                                        "EmissiveFactor": 1.0,
+                                        "Properties": {},
+                                        "SamplerState": "LinearWrap",
+                                        "ShadingModel": "BlinnPhong",
+                                        "Shininess": 32.0,
+                                        "SpecularColor": {
+                                            "X": 1.0,
+                                            "Y": 1.0,
+                                            "Z": 1.0
+                                        },
+                                        "SpecularFactor": 0.08,
+                                        "Textures": [
+                                            "WhiteTexture",
+                                            "FlatNormalTexture"
+                                        ],
+                                        "UVScrollSpeed": [
+                                            0.0,
+                                            0.0
+                                        ]
+                                    }
+                                }
+                            ],
+                            "Properties": {
+                                "StaticMesh": "Cube",
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0,
+                                        "Y": 0,
+                                        "Z": 0
+                                    },
+                                    "Rotation": {
+                                        "X": -0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0,
+                                        "W": 1.0
+                                    },
+                                    "Scale": {
+                                        "X": 0.6,
+                                        "Y": 26.8,
+                                        "Z": 1.1
+                                    }
+                                },
+                                "bBlockComponent": false,
+                                "bGenerateOverlapEvents": false,
+                                "bVisible": true,
+                                "bCastShadow": true,
+                                "bReceiveShadow": true,
+                                "bReceivesDecals": true
+                            }
+                        }
+                    ]
+                },
+                {
+                    "Class": "ABoxActor",
+                    "Name": "Boundary_East",
+                    "RootComponent": "CollisionComponent",
+                    "Properties": {},
+                    "Components": [
+                        {
+                            "Class": "UBoxComponent",
+                            "Name": "CollisionComponent",
+                            "Parent": "",
+                            "Properties": {
+                                "BoxExtent": {
+                                    "X": 0.3,
+                                    "Y": 13.4,
+                                    "Z": 0.55
+                                },
+                                "Transform": {
+                                    "Location": {
+                                        "X": 17.7,
+                                        "Y": 0,
+                                        "Z": 0.55
+                                    },
+                                    "Rotation": {
+                                        "X": -0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0,
+                                        "W": 1.0
+                                    },
+                                    "Scale": {
+                                        "X": 1,
+                                        "Y": 1,
+                                        "Z": 1
+                                    }
+                                },
+                                "bBlockComponent": true,
+                                "bGenerateOverlapEvents": false,
+                                "bDrawOnlyIfSelected": true,
+                                "bVisible": true
+                            }
+                        },
+                        {
+                            "Class": "UStaticMeshComponent",
+                            "Name": "Mesh",
+                            "Parent": "CollisionComponent",
+                            "OverrideMaterials": [
+                                {
+                                    "Base": "DefaultMaterial",
+                                    "Instance": {
+                                        "BlendState": "Opaque",
+                                        "DiffuseOrFactor": {
+                                            "X": 0.15,
+                                            "Y": 0.28,
+                                            "Z": 0.22,
+                                            "W": 1.0
+                                        },
+                                        "EmissiveColor": {
+                                            "X": 0.0,
+                                            "Y": 0.0,
+                                            "Z": 0.0
+                                        },
+                                        "EmissiveFactor": 1.0,
+                                        "Properties": {},
+                                        "SamplerState": "LinearWrap",
+                                        "ShadingModel": "BlinnPhong",
+                                        "Shininess": 32.0,
+                                        "SpecularColor": {
+                                            "X": 1.0,
+                                            "Y": 1.0,
+                                            "Z": 1.0
+                                        },
+                                        "SpecularFactor": 0.08,
+                                        "Textures": [
+                                            "WhiteTexture",
+                                            "FlatNormalTexture"
+                                        ],
+                                        "UVScrollSpeed": [
+                                            0.0,
+                                            0.0
+                                        ]
+                                    }
+                                }
+                            ],
+                            "Properties": {
+                                "StaticMesh": "Cube",
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0,
+                                        "Y": 0,
+                                        "Z": 0
+                                    },
+                                    "Rotation": {
+                                        "X": -0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0,
+                                        "W": 1.0
+                                    },
+                                    "Scale": {
+                                        "X": 0.6,
+                                        "Y": 26.8,
+                                        "Z": 1.1
+                                    }
+                                },
+                                "bBlockComponent": false,
+                                "bGenerateOverlapEvents": false,
+                                "bVisible": true,
+                                "bCastShadow": true,
+                                "bReceiveShadow": true,
+                                "bReceivesDecals": true
+                            }
+                        }
+                    ]
+                },
+                {
+                    "Class": "AStaticMeshActor",
+                    "Name": "FloorStripe_0",
+                    "RootComponent": "Mesh",
+                    "Properties": {},
+                    "Components": [
+                        {
+                            "Class": "UStaticMeshComponent",
+                            "Name": "Mesh",
+                            "Parent": "",
+                            "OverrideMaterials": [
+                                {
+                                    "Base": "DefaultMaterial",
+                                    "Instance": {
+                                        "BlendState": "Opaque",
+                                        "DiffuseOrFactor": {
+                                            "X": 0.2,
+                                            "Y": 0.32,
+                                            "Z": 0.25,
+                                            "W": 1.0
+                                        },
+                                        "EmissiveColor": {
+                                            "X": 0.0,
+                                            "Y": 0.0,
+                                            "Z": 0.0
+                                        },
+                                        "EmissiveFactor": 1.0,
+                                        "Properties": {},
+                                        "SamplerState": "LinearWrap",
+                                        "ShadingModel": "BlinnPhong",
+                                        "Shininess": 32.0,
+                                        "SpecularColor": {
+                                            "X": 1.0,
+                                            "Y": 1.0,
+                                            "Z": 1.0
+                                        },
+                                        "SpecularFactor": 0.08,
+                                        "Textures": [
+                                            "WhiteTexture",
+                                            "FlatNormalTexture"
+                                        ],
+                                        "UVScrollSpeed": [
+                                            0.0,
+                                            0.0
+                                        ]
+                                    }
+                                }
+                            ],
+                            "Properties": {
+                                "StaticMesh": "Cube",
+                                "Transform": {
+                                    "Location": {
+                                        "X": -12,
+                                        "Y": 0,
+                                        "Z": 0.005
+                                    },
+                                    "Rotation": {
+                                        "X": -0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0,
+                                        "W": 1.0
+                                    },
+                                    "Scale": {
+                                        "X": 0.025,
+                                        "Y": 26.5,
+                                        "Z": 0.008
+                                    }
+                                },
+                                "bBlockComponent": false,
+                                "bGenerateOverlapEvents": false,
+                                "bVisible": true,
+                                "bCastShadow": true,
+                                "bReceiveShadow": true,
+                                "bReceivesDecals": true
+                            }
+                        }
+                    ]
+                },
+                {
+                    "Class": "AStaticMeshActor",
+                    "Name": "FloorStripe_1",
+                    "RootComponent": "Mesh",
+                    "Properties": {},
+                    "Components": [
+                        {
+                            "Class": "UStaticMeshComponent",
+                            "Name": "Mesh",
+                            "Parent": "",
+                            "OverrideMaterials": [
+                                {
+                                    "Base": "DefaultMaterial",
+                                    "Instance": {
+                                        "BlendState": "Opaque",
+                                        "DiffuseOrFactor": {
+                                            "X": 0.2,
+                                            "Y": 0.32,
+                                            "Z": 0.25,
+                                            "W": 1.0
+                                        },
+                                        "EmissiveColor": {
+                                            "X": 0.0,
+                                            "Y": 0.0,
+                                            "Z": 0.0
+                                        },
+                                        "EmissiveFactor": 1.0,
+                                        "Properties": {},
+                                        "SamplerState": "LinearWrap",
+                                        "ShadingModel": "BlinnPhong",
+                                        "Shininess": 32.0,
+                                        "SpecularColor": {
+                                            "X": 1.0,
+                                            "Y": 1.0,
+                                            "Z": 1.0
+                                        },
+                                        "SpecularFactor": 0.08,
+                                        "Textures": [
+                                            "WhiteTexture",
+                                            "FlatNormalTexture"
+                                        ],
+                                        "UVScrollSpeed": [
+                                            0.0,
+                                            0.0
+                                        ]
+                                    }
+                                }
+                            ],
+                            "Properties": {
+                                "StaticMesh": "Cube",
+                                "Transform": {
+                                    "Location": {
+                                        "X": -8,
+                                        "Y": 0,
+                                        "Z": 0.005
+                                    },
+                                    "Rotation": {
+                                        "X": -0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0,
+                                        "W": 1.0
+                                    },
+                                    "Scale": {
+                                        "X": 0.025,
+                                        "Y": 26.5,
+                                        "Z": 0.008
+                                    }
+                                },
+                                "bBlockComponent": false,
+                                "bGenerateOverlapEvents": false,
+                                "bVisible": true,
+                                "bCastShadow": true,
+                                "bReceiveShadow": true,
+                                "bReceivesDecals": true
+                            }
+                        }
+                    ]
+                },
+                {
+                    "Class": "AStaticMeshActor",
+                    "Name": "FloorStripe_2",
+                    "RootComponent": "Mesh",
+                    "Properties": {},
+                    "Components": [
+                        {
+                            "Class": "UStaticMeshComponent",
+                            "Name": "Mesh",
+                            "Parent": "",
+                            "OverrideMaterials": [
+                                {
+                                    "Base": "DefaultMaterial",
+                                    "Instance": {
+                                        "BlendState": "Opaque",
+                                        "DiffuseOrFactor": {
+                                            "X": 0.2,
+                                            "Y": 0.32,
+                                            "Z": 0.25,
+                                            "W": 1.0
+                                        },
+                                        "EmissiveColor": {
+                                            "X": 0.0,
+                                            "Y": 0.0,
+                                            "Z": 0.0
+                                        },
+                                        "EmissiveFactor": 1.0,
+                                        "Properties": {},
+                                        "SamplerState": "LinearWrap",
+                                        "ShadingModel": "BlinnPhong",
+                                        "Shininess": 32.0,
+                                        "SpecularColor": {
+                                            "X": 1.0,
+                                            "Y": 1.0,
+                                            "Z": 1.0
+                                        },
+                                        "SpecularFactor": 0.08,
+                                        "Textures": [
+                                            "WhiteTexture",
+                                            "FlatNormalTexture"
+                                        ],
+                                        "UVScrollSpeed": [
+                                            0.0,
+                                            0.0
+                                        ]
+                                    }
+                                }
+                            ],
+                            "Properties": {
+                                "StaticMesh": "Cube",
+                                "Transform": {
+                                    "Location": {
+                                        "X": -4,
+                                        "Y": 0,
+                                        "Z": 0.005
+                                    },
+                                    "Rotation": {
+                                        "X": -0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0,
+                                        "W": 1.0
+                                    },
+                                    "Scale": {
+                                        "X": 0.025,
+                                        "Y": 26.5,
+                                        "Z": 0.008
+                                    }
+                                },
+                                "bBlockComponent": false,
+                                "bGenerateOverlapEvents": false,
+                                "bVisible": true,
+                                "bCastShadow": true,
+                                "bReceiveShadow": true,
+                                "bReceivesDecals": true
+                            }
+                        }
+                    ]
+                },
+                {
+                    "Class": "AStaticMeshActor",
+                    "Name": "FloorStripe_3",
+                    "RootComponent": "Mesh",
+                    "Properties": {},
+                    "Components": [
+                        {
+                            "Class": "UStaticMeshComponent",
+                            "Name": "Mesh",
+                            "Parent": "",
+                            "OverrideMaterials": [
+                                {
+                                    "Base": "DefaultMaterial",
+                                    "Instance": {
+                                        "BlendState": "Opaque",
+                                        "DiffuseOrFactor": {
+                                            "X": 0.2,
+                                            "Y": 0.32,
+                                            "Z": 0.25,
+                                            "W": 1.0
+                                        },
+                                        "EmissiveColor": {
+                                            "X": 0.0,
+                                            "Y": 0.0,
+                                            "Z": 0.0
+                                        },
+                                        "EmissiveFactor": 1.0,
+                                        "Properties": {},
+                                        "SamplerState": "LinearWrap",
+                                        "ShadingModel": "BlinnPhong",
+                                        "Shininess": 32.0,
+                                        "SpecularColor": {
+                                            "X": 1.0,
+                                            "Y": 1.0,
+                                            "Z": 1.0
+                                        },
+                                        "SpecularFactor": 0.08,
+                                        "Textures": [
+                                            "WhiteTexture",
+                                            "FlatNormalTexture"
+                                        ],
+                                        "UVScrollSpeed": [
+                                            0.0,
+                                            0.0
+                                        ]
+                                    }
+                                }
+                            ],
+                            "Properties": {
+                                "StaticMesh": "Cube",
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0,
+                                        "Y": 0,
+                                        "Z": 0.005
+                                    },
+                                    "Rotation": {
+                                        "X": -0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0,
+                                        "W": 1.0
+                                    },
+                                    "Scale": {
+                                        "X": 0.025,
+                                        "Y": 26.5,
+                                        "Z": 0.008
+                                    }
+                                },
+                                "bBlockComponent": false,
+                                "bGenerateOverlapEvents": false,
+                                "bVisible": true,
+                                "bCastShadow": true,
+                                "bReceiveShadow": true,
+                                "bReceivesDecals": true
+                            }
+                        }
+                    ]
+                },
+                {
+                    "Class": "AStaticMeshActor",
+                    "Name": "FloorStripe_4",
+                    "RootComponent": "Mesh",
+                    "Properties": {},
+                    "Components": [
+                        {
+                            "Class": "UStaticMeshComponent",
+                            "Name": "Mesh",
+                            "Parent": "",
+                            "OverrideMaterials": [
+                                {
+                                    "Base": "DefaultMaterial",
+                                    "Instance": {
+                                        "BlendState": "Opaque",
+                                        "DiffuseOrFactor": {
+                                            "X": 0.2,
+                                            "Y": 0.32,
+                                            "Z": 0.25,
+                                            "W": 1.0
+                                        },
+                                        "EmissiveColor": {
+                                            "X": 0.0,
+                                            "Y": 0.0,
+                                            "Z": 0.0
+                                        },
+                                        "EmissiveFactor": 1.0,
+                                        "Properties": {},
+                                        "SamplerState": "LinearWrap",
+                                        "ShadingModel": "BlinnPhong",
+                                        "Shininess": 32.0,
+                                        "SpecularColor": {
+                                            "X": 1.0,
+                                            "Y": 1.0,
+                                            "Z": 1.0
+                                        },
+                                        "SpecularFactor": 0.08,
+                                        "Textures": [
+                                            "WhiteTexture",
+                                            "FlatNormalTexture"
+                                        ],
+                                        "UVScrollSpeed": [
+                                            0.0,
+                                            0.0
+                                        ]
+                                    }
+                                }
+                            ],
+                            "Properties": {
+                                "StaticMesh": "Cube",
+                                "Transform": {
+                                    "Location": {
+                                        "X": 4,
+                                        "Y": 0,
+                                        "Z": 0.005
+                                    },
+                                    "Rotation": {
+                                        "X": -0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0,
+                                        "W": 1.0
+                                    },
+                                    "Scale": {
+                                        "X": 0.025,
+                                        "Y": 26.5,
+                                        "Z": 0.008
+                                    }
+                                },
+                                "bBlockComponent": false,
+                                "bGenerateOverlapEvents": false,
+                                "bVisible": true,
+                                "bCastShadow": true,
+                                "bReceiveShadow": true,
+                                "bReceivesDecals": true
+                            }
+                        }
+                    ]
+                },
+                {
+                    "Class": "AStaticMeshActor",
+                    "Name": "FloorStripe_5",
+                    "RootComponent": "Mesh",
+                    "Properties": {},
+                    "Components": [
+                        {
+                            "Class": "UStaticMeshComponent",
+                            "Name": "Mesh",
+                            "Parent": "",
+                            "OverrideMaterials": [
+                                {
+                                    "Base": "DefaultMaterial",
+                                    "Instance": {
+                                        "BlendState": "Opaque",
+                                        "DiffuseOrFactor": {
+                                            "X": 0.2,
+                                            "Y": 0.32,
+                                            "Z": 0.25,
+                                            "W": 1.0
+                                        },
+                                        "EmissiveColor": {
+                                            "X": 0.0,
+                                            "Y": 0.0,
+                                            "Z": 0.0
+                                        },
+                                        "EmissiveFactor": 1.0,
+                                        "Properties": {},
+                                        "SamplerState": "LinearWrap",
+                                        "ShadingModel": "BlinnPhong",
+                                        "Shininess": 32.0,
+                                        "SpecularColor": {
+                                            "X": 1.0,
+                                            "Y": 1.0,
+                                            "Z": 1.0
+                                        },
+                                        "SpecularFactor": 0.08,
+                                        "Textures": [
+                                            "WhiteTexture",
+                                            "FlatNormalTexture"
+                                        ],
+                                        "UVScrollSpeed": [
+                                            0.0,
+                                            0.0
+                                        ]
+                                    }
+                                }
+                            ],
+                            "Properties": {
+                                "StaticMesh": "Cube",
+                                "Transform": {
+                                    "Location": {
+                                        "X": 8,
+                                        "Y": 0,
+                                        "Z": 0.005
+                                    },
+                                    "Rotation": {
+                                        "X": -0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0,
+                                        "W": 1.0
+                                    },
+                                    "Scale": {
+                                        "X": 0.025,
+                                        "Y": 26.5,
+                                        "Z": 0.008
+                                    }
+                                },
+                                "bBlockComponent": false,
+                                "bGenerateOverlapEvents": false,
+                                "bVisible": true,
+                                "bCastShadow": true,
+                                "bReceiveShadow": true,
+                                "bReceivesDecals": true
+                            }
+                        }
+                    ]
+                },
+                {
+                    "Class": "AStaticMeshActor",
+                    "Name": "FloorStripe_6",
+                    "RootComponent": "Mesh",
+                    "Properties": {},
+                    "Components": [
+                        {
+                            "Class": "UStaticMeshComponent",
+                            "Name": "Mesh",
+                            "Parent": "",
+                            "OverrideMaterials": [
+                                {
+                                    "Base": "DefaultMaterial",
+                                    "Instance": {
+                                        "BlendState": "Opaque",
+                                        "DiffuseOrFactor": {
+                                            "X": 0.2,
+                                            "Y": 0.32,
+                                            "Z": 0.25,
+                                            "W": 1.0
+                                        },
+                                        "EmissiveColor": {
+                                            "X": 0.0,
+                                            "Y": 0.0,
+                                            "Z": 0.0
+                                        },
+                                        "EmissiveFactor": 1.0,
+                                        "Properties": {},
+                                        "SamplerState": "LinearWrap",
+                                        "ShadingModel": "BlinnPhong",
+                                        "Shininess": 32.0,
+                                        "SpecularColor": {
+                                            "X": 1.0,
+                                            "Y": 1.0,
+                                            "Z": 1.0
+                                        },
+                                        "SpecularFactor": 0.08,
+                                        "Textures": [
+                                            "WhiteTexture",
+                                            "FlatNormalTexture"
+                                        ],
+                                        "UVScrollSpeed": [
+                                            0.0,
+                                            0.0
+                                        ]
+                                    }
+                                }
+                            ],
+                            "Properties": {
+                                "StaticMesh": "Cube",
+                                "Transform": {
+                                    "Location": {
+                                        "X": 12,
+                                        "Y": 0,
+                                        "Z": 0.005
+                                    },
+                                    "Rotation": {
+                                        "X": -0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0,
+                                        "W": 1.0
+                                    },
+                                    "Scale": {
+                                        "X": 0.025,
+                                        "Y": 26.5,
+                                        "Z": 0.008
+                                    }
+                                },
+                                "bBlockComponent": false,
+                                "bGenerateOverlapEvents": false,
+                                "bVisible": true,
+                                "bCastShadow": true,
+                                "bReceiveShadow": true,
+                                "bReceivesDecals": true
+                            }
+                        }
+                    ]
+                },
+                {
+                    "Class": "APawn",
+                    "Name": "KirbyPlayer",
+                    "Properties": {
+                        "bAutoPossessPlayer": true
+                    },
+                    "RootComponent": "CollisionComponent",
+                    "Components": [
+                        {
+                            "Class": "UCapsuleComponent",
+                            "Name": "CollisionComponent",
+                            "Parent": "",
+                            "Properties": {
+                                "CapsuleRadius": 0.62,
+                                "CapsuleHalfHeight": 0.65,
+                                "Transform": {
+                                    "Location": {
+                                        "X": -11,
+                                        "Y": 0,
+                                        "Z": 0.66
+                                    },
+                                    "Rotation": {
+                                        "X": -0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0,
+                                        "W": 1.0
+                                    },
+                                    "Scale": {
+                                        "X": 1,
+                                        "Y": 1,
+                                        "Z": 1
+                                    }
+                                },
+                                "bBlockComponent": true,
+                                "bGenerateOverlapEvents": false,
+                                "bDrawOnlyIfSelected": true,
+                                "bVisible": true
+                            }
+                        },
+                        {
+                            "Class": "USkeletalMeshComponent",
+                            "Name": "KirbyMesh",
+                            "Parent": "CollisionComponent",
+                            "OverrideMaterials": [],
+                            "Properties": {
+                                "SkeletalMesh": "Imported/Kirby/SK_Kirby_Root.fbxbin",
+                                "AnimationMode": "Default Anim Instance",
+                                "AnimToPlay": null,
+                                "bSavedLooping": true,
+                                "bSavedPlaying": true,
+                                "SavedPlayRate": 1.0,
+                                "SavedPosition": 0.0,
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0,
+                                        "Y": 0,
+                                        "Z": -0.62
+                                    },
+                                    "Rotation": {
+                                        "X": 0.0,
+                                        "Y": 0.0,
+                                        "Z": -0.7071067811865476,
+                                        "W": 0.7071067811865476
+                                    },
+                                    "Scale": {
+                                        "X": 0.3,
+                                        "Y": 0.3,
+                                        "Z": 0.3
+                                    }
+                                },
+                                "bBlockComponent": false,
+                                "bGenerateOverlapEvents": false,
+                                "bVisible": true,
+                                "bCastShadow": true,
+                                "bReceiveShadow": true,
+                                "bReceivesDecals": true
+                            }
+                        },
+                        {
+                            "Class": "UCameraComponent",
+                            "Name": "ThirdPersonCamera",
+                            "Parent": "CollisionComponent",
+                            "Properties": {
+                                "Transform": {
+                                    "Location": {
+                                        "X": -6.8,
+                                        "Y": 0,
+                                        "Z": 4.3
+                                    },
+                                    "Rotation": {
+                                        "X": -0.0,
+                                        "Y": 0.25038000405444144,
+                                        "Z": 0.0,
+                                        "W": 0.9681476403781077
+                                    },
+                                    "Scale": {
+                                        "X": 1,
+                                        "Y": 1,
+                                        "Z": 1
+                                    }
+                                },
+                                "mAspectRatio": 1.7777778,
+                                "mFieldOfView": 60.0,
+                                "mNearClipPlane": 0.05,
+                                "mFarClipPlane": 200.0,
+                                "mIsOrthogonal": false,
+                                "mOrthoWidth": 16.0
+                            }
+                        },
+                        {
+                            "Class": "UScriptComponent",
+                            "Name": "KirbyController",
+                            "Parent": "",
+                            "Properties": {
+                                "ScriptPath": "Assets/Scripts/KirbyAnimDemo.lua"
+                            }
+                        }
+                    ]
+                }
+            ],
+            "Properties": {}
+        },
+        "Properties": {}
+    }
+}
