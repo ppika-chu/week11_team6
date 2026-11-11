@@ -28,6 +28,8 @@ public:
 	void OnOverlap(AActor* OtherActor);
 	void OnEndOverlap(AActor* OtherActor);
 	void OnHit(AActor* OtherActor, const FHitResult& Hit);
+	// Custom AnimInstance가 전달한 이름 이벤트를 Lua의 OnAnimNotify로 호출한다.
+	void OnAnimNotify(const FString& NotifyName);
 
 	bool CreateScriptFromTemplate(const std::filesystem::path& NewScriptPath);
 	bool LoadScript();
@@ -47,6 +49,7 @@ private:
 	sol::protected_function OverlapFunction;
 	sol::protected_function EndOverlapFunction;
 	sol::protected_function HitFunction;
+	sol::protected_function AnimNotifyFunction;
 
 	FLuaVM* LuaVM = nullptr;
 	sol::state* State = nullptr;
