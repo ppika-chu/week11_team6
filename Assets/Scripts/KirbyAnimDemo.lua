@@ -1,6 +1,7 @@
 -- Assets/Scenes/Tests/KirbyAnimDemo.scene의 KirbyPlayer에 연결한다.
 -- 기존 importer 출력: Assets/Imported/Kirby (Skeletal Combine / Import Animations 켜짐).
--- SequencePlayer -> StateResult -> StateMachine -> Slot -> Root -> AnimInstance 최종 pose.
+-- SequencePlayer -> StateResult -> StateMachine -> Root -> AnimInstance 최종 pose.
+-- 인사와 클립 미리보기는 AnyState로 Action 상태에 진입하고, 종료 후 현재 이동 상태로 복귀한다.
 -- 이동은 Capsule 루트의 실제 Sweep을 사용한다. SetActorLocation은 리셋에만 사용한다.
 local PREFIX = "Imported/Kirby/ANIM_Kirby_"
 local WALK_SPEED, RUN_SPEED, FLY_SPEED, GRAVITY = 2.2, 4.3, 2.6, 11.0
@@ -15,70 +16,117 @@ local CATALOG = {
     "Land-SaluteForward", "Land-SaluteLeft", "Land-SaluteRight",
     "Carried", "Carried.001", "ClimbCeiling", "ClimbCeiling.001", "ArmatureAction",
 }
-local Mesh, Camera, Anim, Machine, Slot
-local States, Names = {}, {}
+local ACTION_ORDER, ACTION_CLIPS = {}, {}
+for _, clip in ipairs(CATALOG) do
+    local name = "Action_" .. clip
+    ACTION_ORDER[#ACTION_ORDER + 1], ACTION_CLIPS[name] = name, clip
+end
+local Mesh, Camera, Anim, Machine
+local States, Names, Edges = {}, {}, {}
 local Home, Yaw, VelocityZ = nil, 0, 0
 local MoveX, MoveY, Moving, Running, Flying, Sitting = 0, 0, false, false, false, false
 local Grounded, Landing, GroundContact, CeilingContact = true, false, false, false
-local DesiredState, GalleryIndex, SlotLabel = "Idle", 1, "None"
+local DesiredState, GalleryIndex, RequestedAction, ForceResume = "Idle", 1, nil, false
 local HitName, HitTimer, Ready, ShowHelp = "None", 0, false, true
 
 local function ClipPath(name) return PREFIX .. name .. ".fbxbin" end
 local function CurrentState() return Names[Machine:GetCurrentStateIndex()] end
+local function IsAction(name) return ACTION_CLIPS[name] ~= nil end
+
+local function AddState(name, clip, looping)
+    local player = Anim:CreateNode("SequencePlayer")
+    player:SetSequencePlayer(ClipPath(clip))
+    assert(player:GetPlayLength() > 0, "Kirby animation is empty: " .. name)
+    player:SetLooping(looping)
+    -- 기본 착지 State만 짧게 재생한다. 같은 클립의 Action 미리보기는 원래 속도다.
+    if name == "Land" then player:SetPlayRate(player:GetPlayLength() / 0.35) end
+    local result = Anim:CreateNode("StateResult")
+    result:SetInputNode(player)
+    local state = Anim:CreateState()
+    state:SetStateResult(result)
+    local index = Machine:AddState(state)
+    assert(index >= 0, "Kirby state registration failed: " .. name)
+    States[name], Names[index] = { Index = index, Player = player }, name
+end
+
+local function AddTransition(from, to, duration, priority, condition)
+    local transition = Anim:CreateTransition()
+    if from then transition:SetFromStateIndex(States[from].Index)
+    else transition:SetAnyState(true) end
+    transition:SetToStateIndex(States[to].Index)
+    transition:SetPriority(priority)
+    transition:SetBlendDuration(duration)
+    transition:SetConditionFunction(condition)
+    local index = Machine:AddTransition(transition)
+    assert(index >= 0, "Kirby transition registration failed")
+    Edges[index] = { From = from or "ANY", To = to, Duration = duration }
+end
 
 local function BuildGraph()
-    States, Names = {}, {}
+    States, Names, Edges = {}, {}, {}
     Machine = Anim:CreateNode("StateMachine")
     for _, name in ipairs(STATE_ORDER) do
-        local player = Anim:CreateNode("SequencePlayer")
-        player:SetSequencePlayer(ClipPath(STATE_CLIPS[name]))
-        assert(player:GetPlayLength() > 0, "Kirby animation is empty: " .. name)
-        player:SetLooping(name ~= "Sit" and name ~= "Land")
-        -- Sit은 마지막 앉은 자세를 유지하고, 착지는 짧게 재생한다.
-        if name == "Land" then player:SetPlayRate(player:GetPlayLength() / 0.35) end
-        local result = Anim:CreateNode("StateResult")
-        result:SetInputNode(player)
-        local state = Anim:CreateState()
-        state:SetStateResult(result)
-        local index = Machine:AddState(state)
-        assert(index >= 0, "Kirby state registration failed: " .. name)
-        States[name], Names[index] = { Index = index, Player = player }, name
+        AddState(name, STATE_CLIPS[name], name ~= "Sit" and name ~= "Land")
     end
-    -- 전이 조건에는 부수 효과가 없다. 목표 상태는 충돌 이동 결과로 프레임마다 결정한다.
+    for _, name in ipairs(ACTION_ORDER) do AddState(name, ACTION_CLIPS[name], false) end
+    -- 목표 이동 상태는 충돌 결과로 계속 갱신하지만 Action 재생 중에는 진입하지 않는다.
     for _, from in ipairs(STATE_ORDER) do
         for _, to in ipairs(STATE_ORDER) do
             if from ~= to then
                 local target = to
-                local transition = Anim:CreateTransition()
-                transition:SetFromStateIndex(States[from].Index)
-                transition:SetToStateIndex(States[target].Index)
-                transition:SetBlendDuration((target == "Fly" or target == "Fall") and 0.10 or 0.16)
-                transition:SetConditionFunction(function() return DesiredState == target end)
-                assert(Machine:AddTransition(transition) >= 0, "Kirby transition registration failed")
+                AddTransition(from, target, (target == "Fly" or target == "Fall") and 0.10 or 0.16,
+                    10, function() return DesiredState == target end)
             end
         end
     end
+    for _, name in ipairs(ACTION_ORDER) do
+        local action = name
+        -- 일반 전이(priority 10) 도중에도 Action(priority 0)이 현재 혼합 포즈에서 끼어든다.
+        AddTransition(nil, action, 0.12, 0, function()
+            if RequestedAction ~= action then return false end
+            RequestedAction, ForceResume = nil, false
+            return true
+        end)
+        for _, name in ipairs(STATE_ORDER) do
+            local target = name
+            AddTransition(action, target, 0.20, 10, function()
+                return DesiredState == target and not States[action].Player:IsPlaying()
+            end)
+        end
+    end
+    for _, name in ipairs(STATE_ORDER) do
+        local target = name
+        -- N은 Action 진입 Blend도 중단하고 현재 이동/비행 상태로 복귀한다.
+        AddTransition(nil, target, 0.20, -10, function()
+            if not ForceResume or DesiredState ~= target then return false end
+            ForceResume = false
+            return true
+        end)
+    end
     assert(Machine:SetInitialStateIndex(States.Idle.Index))
-    Slot = Anim:CreateNode("Slot")
-    Slot:SetSlotName("KirbyFullBody")
-    Slot:SetInputNode(Machine)
     local root = Anim:CreateNode("Root")
-    root:SetInputNode(Slot)
+    root:SetInputNode(Machine)
     Anim:SetRootNode(root)
 end
 
-local function PlaySlot(clip)
-    -- Slot은 전신 override이며, 기본 StateMachine의 시간과 전이는 계속 진행된다.
-    Slot:PlayMontage(ClipPath(clip), 1.0, 0.12, 0.20, false)
-    SlotLabel = clip
+local function RequestAction(clip)
+    local action = "Action_" .. clip
+    assert(ACTION_CLIPS[action], "Unknown Kirby action: " .. clip)
+    -- AnyState의 자기 전이는 제외되므로 같은 Action 재요청은 종료/복귀 후 다시 실행한다.
+    RequestedAction = action
+end
+
+local function StopAction()
+    RequestedAction = nil
+    ForceResume = IsAction(CurrentState())
 end
 
 local function ResetPlayer()
-    Slot:StopMontage(0)
     self:SetActorLocation(FVector.new(Home.X, Home.Y, Home.Z))
     VelocityZ, Grounded, Landing, Sitting = 0, true, false, false
     MoveX, MoveY, Moving, Running, Flying = 0, 0, false, false, false
-    DesiredState, SlotLabel, HitName, HitTimer = "Idle", "None", "None", 0
+    DesiredState, RequestedAction, ForceResume, HitName, HitTimer = "Idle", nil, false, "None", 0
+    BuildGraph()
 end
 
 local function ReadInput()
@@ -91,13 +139,13 @@ local function ReadInput()
     if Moving then MoveX, MoveY = MoveX / length, MoveY / length end
     if IsKeyPressed(Key.C) and Grounded then Sitting = not Sitting end
     if Moving or Flying then Sitting = false end
-    if IsKeyPressed(Key.F) then PlaySlot("Land-SaluteForward") end
-    if IsKeyPressed(Key.Q) then PlaySlot("Land-SaluteLeft") end
-    if IsKeyPressed(Key.E) then PlaySlot("Land-SaluteRight") end
-    if IsKeyPressed(Key.N) then Slot:StopMontage(0.20) end
+    if IsKeyPressed(Key.F) then RequestAction("Land-SaluteForward") end
+    if IsKeyPressed(Key.Q) then RequestAction("Land-SaluteLeft") end
+    if IsKeyPressed(Key.E) then RequestAction("Land-SaluteRight") end
+    if IsKeyPressed(Key.N) then StopAction() end
     if IsKeyPressed(Key.Z) then GalleryIndex = (GalleryIndex - 2) % #CATALOG + 1 end
     if IsKeyPressed(Key.X) then GalleryIndex = GalleryIndex % #CATALOG + 1 end
-    if IsKeyPressed(Key.V) then PlaySlot(CATALOG[GalleryIndex]) end
+    if IsKeyPressed(Key.V) then RequestAction(CATALOG[GalleryIndex]) end
     if IsKeyPressed(Key.Tab) then ShowHelp = not ShowHelp end
     if IsKeyPressed(Key.R) then ResetPlayer() end
 end
@@ -160,7 +208,8 @@ local function UpdateCamera()
 end
 
 local function DrawHUD()
-    if not Slot:IsMontagePlaying() then SlotLabel = "None" end
+    local name = CurrentState() or "Idle"
+    local action = ACTION_CLIPS[name] or "None"
     local anchor = FVector2.new(0, 0)
     local size = math.max(14, math.min(18, GetViewportSize().Y / 45))
     AddUIImage("Assets/Textures/SkeletalAnimTestHUD.png", FVector2.new(760, size * (ShowHelp and 12.5 or 5.8)),
@@ -168,13 +217,18 @@ local function DrawHUD()
     local function Text(value, line)
         AddUIText(value, size, anchor, anchor, FVector2.new(20, 54 + line * size * 1.4))
     end
-    Text("KIRBY / STATE MACHINE + SLOT", 0)
-    Text(string.format("State: %s   Slot: %s   Weight: %.2f", CurrentState() or "Idle", SlotLabel, Slot:GetMontageWeight()), 1)
+    Text("KIRBY / STATE MACHINE + ANY STATE", 0)
+    Text(string.format("State: %s   Action: %s   Target: %s", name, action, DesiredState), 1)
     Text(string.format("Grounded: %s   Last obstacle: %s", tostring(Grounded), HitTimer > 0 and HitName or "None"), 2)
     if ShowHelp then
+        local edge = Edges[Machine:GetActiveTransitionIndex()]
+        if edge then
+            Text(string.format("%s -> %s | Blend %.0f%% / %.2fs", edge.From, edge.To,
+                math.min(1, Machine:GetTransitionElapsedTime() / edge.Duration) * 100, edge.Duration), 3)
+        else Text("Transition: inactive | Pending: " .. (RequestedAction or "None"), 3) end
         Text("WASD move | Shift run | Hold Space fly / release to fall | C sit", 4)
-        Text("F / Q / E salute in Slot | N blend Slot out | R reset", 5)
-        Text(string.format("Z / X select clip | V play in Slot [%02d/%02d: %s]", GalleryIndex, #CATALOG, CATALOG[GalleryIndex]), 6)
+        Text("F / Q / E AnyState salute | N cancel Action | R reset", 5)
+        Text(string.format("Z / X select clip | V AnyState Action [%02d/%02d: %s]", GalleryIndex, #CATALOG, CATALOG[GalleryIndex]), 6)
         Text("Tab help | Shift+F1 release cursor | Click viewport to resume", 7)
     end
 end
@@ -185,6 +239,7 @@ function BeginPlay()
     assert(Mesh and Camera, "KirbyAnimDemo requires a SkeletalMesh and Camera")
     Home, Yaw = self:GetActorLocation(), self:GetActorRotation().Yaw
     VelocityZ, Grounded, Landing, Sitting, DesiredState = 0, true, false, false, "Idle"
+    RequestedAction, ForceResume = nil, false
     Anim = Mesh:CreateAnimInstance()
     BuildGraph()
     UpdateCamera()
@@ -192,7 +247,7 @@ function BeginPlay()
     if manager then manager:SetViewTargetCamera(Camera) end
     SetCursorMode(CursorMode.Locked)
     Ready = true
-    print("[KirbyAnimDemo] Ready: StateMachine -> KirbyFullBody Slot -> Root -> AnimInstance")
+    print("[KirbyAnimDemo] Ready: AnyState Actions -> StateMachine -> Root -> AnimInstance")
 end
 
 function Tick(dt)
@@ -217,7 +272,6 @@ end
 function EndPlay()
     Ready = false
     if Anim and Anim:IsValid() then
-        Slot:StopMontage(0)
         Anim:SetRootNode(nil)
     end
     SetCursorMode(CursorMode.Free)
